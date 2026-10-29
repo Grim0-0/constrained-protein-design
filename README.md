@@ -13,8 +13,10 @@ worthless. But the metric the field reports — hypervolume — pays for it anyw
 This repo benchmarks four constraint-handling rules through a single shared
 search engine, on a landscape built from **experimentally measured** folding and
 binding free energies, and reports **feasibility rate**: the fraction of
-returned designs that actually satisfy the constraint. That metric is almost
-never reported.
+returned designs that actually satisfy the constraint — a metric standard in
+constrained optimization and essentially absent from multi-objective protein
+design. See [relation to prior work](#relation-to-prior-work) for what that
+does and does not claim.
 
 ---
 
@@ -270,6 +272,47 @@ where the feasibility rate lives) and **feasible-filtered** (every rule made to
 discard infeasible designs, so selection is identical and only the search
 differs). Reporting only the first would flatter rules that quietly return
 unusable designs; only the second would hide that they do.
+
+---
+
+## Relation to prior work
+
+Worth being exact about, because the loose version of this claim is wrong.
+
+**Hypervolume is not broken.** It measures the volume of objective space a
+solution set dominates, and it was defined for *unconstrained* multi-objective
+problems where every point is a legitimate trade-off. It does that correctly.
+The failure shown above is what happens when it is applied **unchanged** to a
+problem with a hard constraint, so that violating designs still contribute
+volume.
+
+**Constrained optimization already solved the reporting problem.** The
+constrained multi-objective evolutionary computation literature has handled
+this for decades: hypervolume computed over feasible solutions only, set to
+zero when nothing is feasible, with feasibility ratio reported as a matter of
+course, against benchmark suites built around constraints (CF, MW, DAS-CMOP,
+LIR-CMOP). None of that is new here, and this project claims none of it.
+
+**The gap is in protein design specifically.** Multi-objective protein design
+work -- LaMBO, EvoMOBO, MP2D, NSGA-II with ProteinMPNN -- frames these problems
+as trade-offs and reports hypervolume and front coverage. Because no
+feasibility threshold is defined, feasibility rate never appears. There are
+reasonable causes for that, not an oversight:
+
+- for most design objectives there is no principled threshold; what ddG_folding
+  counts as "unfolded" is continuous and context-dependent
+- until datasets measured *both* properties for the *same* variants, there was
+  no measured ground truth to define a constraint against
+- Pareto framing is genuinely more useful when the threshold is unknown
+- the two literatures barely overlap: constrained-MOEA machinery sits in
+  evolutionary computation, protein design ML grew out of generative modelling
+
+**So what is contributed here** is a benchmark, not a method or a metric: a
+protein sequence-design problem where the hard constraint is a biophysical
+property with experimentally measured ground truth; one search engine with the
+constraint rule as the only variable; and a measurement of what the current
+protein-design reporting convention hides. The Lagrangian rule itself is
+adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ---
 
