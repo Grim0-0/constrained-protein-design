@@ -1,0 +1,32 @@
+# Project data and outputs are never committed.
+data/raw/
+results/
+figures/*.png
+figures/*.pdf
+
+# ...except the figures the README displays, which have to be in the repo for
+# GitHub to render them. Everything else in figures/ is regenerated output.
+!figures/headline_tau_sweep_additive_GRB2-SH3.png
+!figures/hypervolume_gap_additive_GRB2-SH3.png
+!figures/tuning_cost_additive_GRB2-SH3.png
+!figures/budget_curves_additive_GRB2-SH3.png
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+
+# Internal planning document: names a former employer and contains
+# interview framing. Keep it locally; it does not belong in a public repo.
+PROJECT_A_SPEC.md
