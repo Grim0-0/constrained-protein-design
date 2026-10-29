@@ -144,6 +144,60 @@ badly on a metric — it is buying nothing with most of its budget.
 
 ---
 
+## The designs themselves
+
+Metrics are the contribution, but a design benchmark should show what it
+designed. Both tables pool every rule's evaluations at a mid-tightness
+constraint and keep only designs that satisfy it, ranked by binding. Negative
+ddG binding means tighter binding than wild type; ddG folding at or below the
+limit means the protein still folds.
+
+**Track 1 — measured variants, zero oracle error.** These are real assayed
+single mutants; both numbers are the published inferred free energies, not
+predictions of this work.
+
+Constraint: `ddG_folding <= +0.89` kcal/mol. 171 designs satisfy it; the best six:
+
+| design | ddG binding | ddG folding | found by |
+|---|---|---|---|
+| `T53G` | **−1.37** | −0.05 | Scalarization (w=0.5) |
+| `K37T` | **−1.04** | +0.61 | Lagrangian |
+| `H26E` | **−0.88** | −0.66 | Fixed penalty |
+| `K37S` | **−0.88** | +0.86 | Scalarization (w=0.5) |
+| `Q43D` | **−0.74** | +0.49 | Scalarization (w=0.5) |
+| `C40L` | **−0.72** | +0.33 | Lagrangian |
+
+**Track 2 — composed from measured singles under the additive model.** These
+combinations were never assayed; their energies are model predictions and carry
+the oracle caveat below.
+
+Constraint: `ddG_folding <= +0.89` kcal/mol. 2677 designs satisfy it; the best six:
+
+| design | ddG binding | ddG folding | found by |
+|---|---|---|---|
+| `H26E,K37D,R49A,T53G` | **−4.12** | +0.71 | Lagrangian |
+| `H26E,K37T,R49T,T53G` | **−3.91** | +0.07 | Lagrangian |
+| `H26E,K37T,R49N,T53G` | **−3.90** | +0.72 | Lagrangian |
+| `G15D,K37T,R49A,T53G` | **−3.90** | +0.41 | Fixed penalty |
+| `H26E,K37D,R49S,T53G` | **−3.85** | +0.82 | Lagrangian |
+| `H26E,K37T,R49A,T53G` | **−3.79** | −0.74 | Lagrangian |
+
+`H26E,K37T,R49T,T53G` is the one to look at: roughly 4 kcal/mol tighter binding
+at a folding cost of +0.07 kcal/mol, which is within the measurement error on
+the underlying singles. Under the additive model it is close to free.
+
+Position 37 recurs across the whole table — K37T, K37S, K37D all improve
+binding — so the search converges on a binding hotspot that is present in the
+measured data rather than scattering over the sequence.
+
+Regenerate with `python experiments/report.py --designs`.
+
+**None of these have been made or tested in a lab.** Track 1 rows are measured
+free energies for variants that exist; Track 2 rows are model output. Neither
+is a claim about behaviour in a cell.
+
+---
+
 ## The oracle problem, and what the published data actually supports
 
 This is where projects like this usually die: a search proposes sequences nobody

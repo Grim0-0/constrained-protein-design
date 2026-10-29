@@ -83,7 +83,16 @@ def tuning_table(label: str) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--landscape", default="additive_GRB2-SH3")
+    parser.add_argument("--designs", action="store_true",
+                        help="print the best usable designs instead of the metric tables")
     args = parser.parse_args(argv)
+
+    if args.designs:
+        for track in ("exact", "additive"):
+            budget = 120 if track == "exact" else 1200
+            print(f"\n### designs ({track})\n")
+            print(designs_table(track, budget=budget))
+        return 0
 
     for name, builder in (("tau sweep", tau_sweep_table), ("tuning cost", tuning_table)):
         try:
@@ -93,6 +102,48 @@ def main(argv: list[str] | None = None) -> int:
             print(f"(no {name} results for {args.landscape}; run the experiment first)")
     return 0
 
+
+
+# --------------------------------------------------------------------------
+# Actual designs
+# --------------------------------------------------------------------------
+
+
+def designs_table(track: str, domain: str = "GRB2-SH3", budget: int = 1200, n: int = 6) -> str:
+    """The best usable designs the benchmark actually produced, and who found them.
+
+    Pools the evaluation traces of every rule, keeps only designs satisfying the
+    constraint, and ranks them by binding. Naming the rule that found each one
+    keeps this honest: it is a record of what the benchmark produced, not a
+    showcase for one method.
+    """
+    from experiments.common import build_landscape, search_config, tau_grid
+    from cpd.methods import default_methods
+
+    landscape = build_landscape(track, domain)
+    tau = float(tau_grid(landscape, n=7)[3])  # mid-tightness
+
+    pooled: dict = {}
+    for name, method in default_methods().items():
+        run = method(landscape, tau, budget, 20, search_config(0, budget))
+        for variant, measurement in run.trace:
+            if measurement.is_feasible(tau) and variant.order > 0:
+                pooled.setdefault(variant, (measurement, name))
+
+    ranked = sorted(pooled.items(), key=lambda kv: kv[1][0].ddg_binding)
+    lines = [
+        f"Constraint: `ddG_folding <= {tau:+.2f}` kcal/mol. "
+        f"{len(ranked)} designs satisfy it; the best six:",
+        "",
+        "| design | ddG binding | ddG folding | found by |",
+        "|---|---|---|---|",
+    ]
+    for variant, (m, name) in ranked[:n]:
+        lines.append(
+            f"| `{variant}` | **{m.ddg_binding:+.2f}** | {m.ddg_folding:+.2f} "
+            f"| {DISPLAY_NAMES.get(name, name)} |"
+        )
+    return "\n".join(lines)
 
 if __name__ == "__main__":
     raise SystemExit(main())
