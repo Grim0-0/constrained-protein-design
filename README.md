@@ -117,11 +117,22 @@ the absolute numbers differ from it.
 
 At their best settings the three rules sit within 0.19 kcal/mol of each other.
 The difference between them is not peak performance — it is **how much it costs
-to guess the knob wrong**. A badly chosen scalarization weight costs 1.48
-kcal/mol of binding; a badly chosen Lagrangian learning rate costs 0.09, a
-**17× difference in sensitivity**. Choosing blind, the Lagrangian is the best of
-the three, and it is also the best at its own best setting — but only by 0.19,
-which is inside the seed-to-seed spread and is not a result worth leaning on.
+to guess the knob wrong**.
+
+**And unlike the rankings, this one replicates.** The same sweep on all three
+domains, spread between the best and worst setting of each rule:
+
+| domain | Lagrangian `lr` | Fixed penalty `rho` | Scalarization `weight` |
+|---|---|---|---|
+| GB1 | **0.088** | 0.136 | 1.168 |
+| GRB2-SH3 | **0.085** | 0.255 | 1.483 |
+| PSD95-PDZ3 | **0.129** | 0.205 | 0.928 |
+
+Same ordering every time, on three proteins with different conflict strengths:
+the Lagrangian is least sensitive to its knob, the fixed penalty next, the
+weighted sum between 7× and 17× worse than the Lagrangian. This is the only
+claim in the project that both replicates across domains *and* distinguishes
+the rules — the design-quality rankings do neither.
 
 So the honest claim is narrower and more useful than the one this started with:
 
