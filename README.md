@@ -492,7 +492,7 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 170 tests, no data or network needed
+pytest                                    # 181 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
 
@@ -519,7 +519,15 @@ python experiments/baselines.py --track synthetic   # the same check, with epist
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape synthetic --budget 600
 python experiments/report.py              # regenerates the tables above
+python experiments/reported.py            # regenerates reported_numbers.json
 ```
+
+`reported_numbers.json` is the committed record of every figure the README
+quotes. `tests/test_reported_numbers.py` parses the prose and fails if any of
+them disagrees with it, in either direction -- change the code and the record
+moves, so the tests fail until the prose is updated; edit a number by hand and
+they fail at once. The README drifted from the code once; this is what stops
+it happening quietly again.
 
 Everything runs on CPU in minutes. All seeds are fixed; `--landscape synthetic`
 runs the whole pipeline on a built-in toy landscape with no download at all.
@@ -530,7 +538,8 @@ src/cpd/
   objectives.py  the four rules               search.py      the one shared engine
   methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
   baselines.py   greedy + exact optimum
-experiments/     tau_sweep, replication, baselines, tuning_cost, budget_curves, report, plotting
+experiments/     tau_sweep, replication, baselines, tuning_cost, budget_curves,
+                 report, reported, plotting
 data/download.py fetches and parses the ddPCA supplementary tables
 ```
 

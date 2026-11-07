@@ -1,0 +1,75 @@
+{
+  "baselines": {
+    "additive": {
+      "GB1": {
+        "beats_greedy": false,
+        "best_rule": "fixed_penalty",
+        "best_rule_mean": -2.006,
+        "exact_optimum": -2.473,
+        "forward": -0.816,
+        "forward_calls": 1200,
+        "gap": 0.035,
+        "greedy": -1.97,
+        "greedy_calls": 899,
+        "loses_to_greedy": false,
+        "p_value": 0.807,
+        "toughest_baseline": "rank-once"
+      },
+      "GRB2-SH3": {
+        "beats_greedy": false,
+        "best_rule": "scalarization_w0.5",
+        "best_rule_mean": -3.213,
+        "exact_optimum": -3.787,
+        "forward": -2.574,
+        "forward_calls": 1200,
+        "gap": 0.634,
+        "greedy": -2.579,
+        "greedy_calls": 589,
+        "loses_to_greedy": false,
+        "p_value": 0.096,
+        "toughest_baseline": "rank-once"
+      },
+      "PSD95-PDZ3": {
+        "beats_greedy": false,
+        "best_rule": "lagrangian",
+        "best_rule_mean": -1.82,
+        "exact_optimum": -2.442,
+        "forward": -1.154,
+        "forward_calls": 1200,
+        "gap": -0.376,
+        "greedy": -2.196,
+        "greedy_calls": 1036,
+        "loses_to_greedy": true,
+        "p_value": 0.019,
+        "toughest_baseline": "rank-once"
+      }
+    },
+    "synthetic": {
+      "synthetic": {
+        "beats_greedy": true,
+        "best_rule": "lagrangian",
+        "best_rule_mean": -3.948,
+        "exact_optimum": null,
+        "forward": -3.062,
+        "forward_calls": 1200,
+        "gap": 0.885,
+        "greedy": -2.127,
+        "greedy_calls": 381,
+        "loses_to_greedy": false,
+        "p_value": 0.046,
+        "toughest_baseline": "forward"
+      }
+    }
+  },
+  "settings": {
+    "budget": 1200,
+    "budgets_used": [
+      120,
+      600,
+      800,
+      1200
+    ],
+    "n_designs_returned": 20,
+    "n_seeds": 5
+  }
+}
