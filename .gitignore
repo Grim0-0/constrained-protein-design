@@ -29,6 +29,5 @@ venv/
 .idea/
 .DS_Store
 
-# Internal planning document: names a former employer and contains
-# interview framing. Keep it locally; it does not belong in a public repo.
+# Private planning notes. Keep locally; not part of the published work.
 PROJECT_A_SPEC.md
