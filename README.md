@@ -634,6 +634,60 @@ anticorrelated" but "what does the constraint cost you at the optimum".
 
 ---
 
+### How far the additive oracle can be trusted
+
+The caveat above was unquantified, which made it an apology rather than a
+measurement. It can be measured, partly.
+
+Supplementary Table S6 reports **raw fitness** for variants of every order,
+including the doubles Table S7 has no free energies for. Absolute validation
+is impossible — there is nothing to compare a predicted kcal/mol against — but
+ordering can be compared, and ordering is what a search consumes. An oracle
+that ranks designs correctly leads the search to the same places even when its
+numbers are off.
+
+So for every measured double, add the two single-mutant free energies and ask
+how well that reproduces the measured fitness ordering. Spearman, not R², because
+fitness is a sigmoidal function of free energy — a perfect energy model would
+still show a curved fitness plot, and Pearson would mostly measure the
+sigmoid. Signs are flipped so **+1 is perfect agreement**.
+
+| domain | assay | doubles | ρ |
+|---|---|---|---|
+| GB1 | Binding | 382,753 | **0.958** |
+| GRB2-SH3 | Binding | 32,187 | **0.672** |
+| GRB2-SH3 | Abundance | 23,839 | 0.902 |
+| PSD95-PDZ3 | Binding | 5,014 | 0.845 |
+| PSD95-PDZ3 | Abundance | 4,377 | 0.912 |
+
+So the honest version of the caveat is: **additivity preserves rank at
+ρ = 0.67–0.96 at order 2, so Track 2 rankings are trustworthy to roughly that
+resolution and no better.**
+
+**The headline domain is the weakest one.** GRB2-SH3 binding is ρ = 0.672, the
+lowest of the five, and it is the domain the headline figures use. That is not
+a comfortable result and it is not buried: the binding energies this benchmark
+optimizes hardest are the ones the additive model reproduces least faithfully.
+GB1 binding, at 0.958 across 383,000 doubles, is close to exact.
+
+**What this does not bound.** Table S6 stops at doubles — maximum Hamming
+distance 2 on every domain — so order 2 is not a choice, it is the only order
+the published data can test. The oracle composes up to four substitutions and
+nothing here measures it at three or four. Couplings accumulate, so those are
+likely worse, but that is an inference, not a result. GB1 has no AbundancePCA
+data in Table S6, so its folding model is unbounded by this entirely. And
+saturation compresses ranks at both ends of the fitness scale, which depresses
+ρ for reasons that are not the model's fault — a strong value is trustworthy,
+a weak one is partly an artefact of the assay.
+
+```
+python -c "import sys; sys.path.insert(0,'.'); from data.download import fetch_s6; fetch_s6()"
+python experiments/additivity.py
+```
+
+
+---
+
 ## Why the comparison is clean
 
 Every rule runs through the **same** evolutionary search engine, with the same
@@ -724,7 +778,7 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 264 tests, no data or network needed
+pytest                                    # 268 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
 
@@ -758,6 +812,10 @@ done
 for d in GB1 GRB2-SH3 PSD95-PDZ3; do
   python experiments/diversity.py --domain $d         # is the returned set varied?
 done
+
+# Optional, and a 43 MB download: bound the additive oracle against Table S6.
+python -c "import sys; sys.path.insert(0,'.'); from data.download import fetch_s6; fetch_s6()"
+python experiments/additivity.py
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape synthetic --budget 600
 python experiments/report.py              # regenerates the tables above
@@ -781,7 +839,8 @@ src/cpd/
   methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
   baselines.py   greedy + exact optimum
 experiments/     tau_sweep, replication, baselines, windows, uncertainty,
-                 diversity, tuning_cost, budget_curves, report, reported, plotting
+                 diversity, additivity, tuning_cost, budget_curves,
+                 report, reported, plotting
 data/download.py fetches and parses the ddPCA supplementary tables
 ```
 
@@ -821,7 +880,11 @@ how you get it.
   assumption that fails at interacting positions, which for binding domains are
   disproportionately the interface positions this benchmark cares about.
   Propagating the published standard errors in quadrature as independent
-  understates the true uncertainty for the same reason.
+  understates the true uncertainty for the same reason. Now
+  [measured rather than asserted](#how-far-the-additive-oracle-can-be-trusted):
+  rank fidelity is ρ = 0.67–0.96 at order 2, and the headline domain is the
+  weakest of the five. Nothing bounds it at the three and four substitutions
+  the oracle actually composes, because the published data stops at doubles.
 - **No wet-lab validation.** None of these designs have been made. This work is
   entirely computational.
 - **One search family.** Conclusions about constraint handling may interact with

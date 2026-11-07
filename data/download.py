@@ -59,16 +59,25 @@ TABLE_S7_URL = (
 )
 TABLE_S7_FILE = "41586_2022_4586_MOESM10_ESM.xlsx"
 
+#: Supplementary Table S6 -- raw BindingPCA/AbundancePCA fitness for variants of
+#: every order, including the multi-mutants Table S7 reports no free energies
+#: for. Needed only to bound the additivity assumption; see
+#: experiments/additivity.py. About 43 MB, so it is not part of the default run.
+TABLE_S6_URL = (
+    "https://static-content.springer.com/esm/art%3A10.1038%2Fs41586-022-04586-4"
+    "/MediaObjects/41586_2022_4586_MOESM9_ESM.xlsx"
+)
+TABLE_S6_FILE = "41586_2022_4586_MOESM9_ESM.xlsx"
+
 DOMAINS: tuple[str, ...] = ("GB1", "GRB2-SH3", "PSD95-PDZ3")
 
 #: PDB entries the reference ("_ref") position numbering matches.
 STRUCTURES = {"GB1": "1FCC", "GRB2-SH3": "2VWF", "PSD95-PDZ3": "1BE9"}
 
 
-def fetch(force: bool = False) -> Path:
-    """Download Supplementary Table S7 into ``data/raw/`` if it is not there."""
+def _download(url: str, filename: str, label: str, force: bool) -> Path:
     RAW_DIR.mkdir(parents=True, exist_ok=True)
-    path = RAW_DIR / TABLE_S7_FILE
+    path = RAW_DIR / filename
     if path.exists() and not force:
         print(f"already downloaded: {path.name} ({path.stat().st_size / 1024:.0f} KB)")
         return path
@@ -80,17 +89,31 @@ def fetch(force: bool = False) -> Path:
             "requests is needed to download the data: pip install -e '.[data]'"
         ) from None
 
-    print(f"downloading Supplementary Table S7 from doi:{DOI}")
-    response = requests.get(TABLE_S7_URL, timeout=300)
+    print(f"downloading {label} from doi:{DOI}")
+    response = requests.get(url, timeout=900)
     if not response.ok:
         raise SystemExit(
             f"download failed with HTTP {response.status_code}.\n"
             f"Fetch it by hand instead: open https://doi.org/{DOI}, download\n"
-            f"Supplementary Table 7, and save it as {path}"
+            f"{label}, and save it as {path}"
         )
     path.write_bytes(response.content)
     print(f"wrote {path} ({len(response.content) / 1024:.0f} KB)")
     return path
+
+
+def fetch(force: bool = False) -> Path:
+    """Download Supplementary Table S7 into ``data/raw/`` if it is not there."""
+    return _download(TABLE_S7_URL, TABLE_S7_FILE, "Supplementary Table S7", force)
+
+
+def fetch_s6(force: bool = False) -> Path:
+    """Download Supplementary Table S6 -- raw fitness at every variant order.
+
+    Around 43 MB, and used only by :mod:`experiments.additivity`, so the
+    default run does not fetch it.
+    """
+    return _download(TABLE_S6_URL, TABLE_S6_FILE, "Supplementary Table S6", force)
 
 
 def parse_table(path: Path | None = None, confident_only: bool = True) -> pd.DataFrame:

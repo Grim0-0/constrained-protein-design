@@ -481,3 +481,67 @@ def test_the_prose_names_the_domains_where_the_suspicion_held(readme, record):
     flat = " ".join(readme.split())
     assert "On GRB2-SH3, yes." in flat
     assert "On GB1 and PSD95-PDZ3, no." in flat
+
+
+# --------------------------------------------------------------------------
+# The additivity bound
+# --------------------------------------------------------------------------
+
+ADDITIVITY_HEADER = "| domain | assay | doubles | ρ |"
+
+
+def test_the_additivity_table_matches_the_record(readme, record):
+    lines = readme.splitlines()
+    start = lines.index(ADDITIVITY_HEADER)
+    seen = set()
+    for body in lines[start + 2:]:
+        if not body.startswith("|"):
+            break
+        cells = [c.strip() for c in body.strip().strip("|").split("|")]
+        domain, assay = cells[0], cells[1]
+        stored = record["additivity"][domain][assay]
+        seen.add((domain, assay))
+        n = int(cells[2].replace(",", ""))
+        assert n == stored["n_doubles"], f"{domain}/{assay}: double count differs"
+        rho = _number(cells[3])
+        assert rho is not None and abs(rho - stored["rho_agreement"]) <= TOLERANCE, (
+            f"{domain}/{assay}: README says rho={rho}, record says "
+            f"{stored['rho_agreement']}"
+        )
+    expected = {(d, a) for d, assays in record["additivity"].items() for a in assays}
+    assert seen == expected, f"table and record disagree on rows: {seen ^ expected}"
+
+
+def test_the_quoted_rho_range_matches_the_record(readme, record):
+    values = [
+        v["rho_agreement"]
+        for assays in record["additivity"].values()
+        for v in assays.values()
+    ]
+    flat = " ".join(readme.split())
+    assert f"ρ = {min(values):.2f}–{max(values):.2f} at order 2" in flat, (
+        f"the quoted rho range no longer matches the record "
+        f"({min(values):.2f}-{max(values):.2f})"
+    )
+
+
+def test_the_readme_admits_the_headline_domain_is_the_weakest(readme, record):
+    """If that stops being true the prose must change, not stay flattering."""
+    worst = min(
+        ((d, a, v["rho_agreement"]) for d, assays in record["additivity"].items()
+         for a, v in assays.items()),
+        key=lambda row: row[2],
+    )
+    assert worst[:2] == ("GRB2-SH3", "Binding"), (
+        f"the weakest additivity is now {worst[0]}/{worst[1]}; the README says "
+        "GRB2-SH3 binding"
+    )
+    flat = " ".join(readme.split())
+    assert "The headline domain is the weakest one" in flat
+
+
+def test_the_readme_says_the_bound_stops_at_doubles(readme):
+    """Overclaiming the scope of this bound would be the easy mistake."""
+    flat = " ".join(readme.split())
+    assert "Table S6 stops at doubles" in flat
+    assert "nothing here measures it at three or four" in flat

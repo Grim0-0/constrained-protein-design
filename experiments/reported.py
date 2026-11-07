@@ -149,6 +149,21 @@ def _diversity_rows() -> dict:
     return out
 
 
+def _additivity_rows() -> dict:
+    """Rank fidelity of the additive oracle, measured on doubles."""
+    path = RESULTS_DIR / "additivity_spearman.csv"
+    if not path.exists():
+        return {}
+    frame = pd.read_csv(path)
+    out: dict = {}
+    for _, row in frame.iterrows():
+        out.setdefault(str(row["domain"]), {})[str(row["assay"])] = {
+            "n_doubles": int(row["n_doubles"]),
+            "rho_agreement": round(float(row["rho_agreement"]), 3),
+        }
+    return out
+
+
 def collect() -> dict:
     """Gather every figure the README quotes, from the committed result files."""
     record: dict = {
@@ -162,6 +177,7 @@ def collect() -> dict:
         "windows": _window_rows(),
         "uncertainty": _uncertainty_rows(),
         "diversity": _diversity_rows(),
+        "additivity": _additivity_rows(),
     }
     missing = [t for t, rows in record["baselines"].items() if not rows]
     if missing:

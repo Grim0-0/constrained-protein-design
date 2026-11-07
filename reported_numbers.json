@@ -1,4 +1,32 @@
 {
+  "additivity": {
+    "GB1": {
+      "Binding": {
+        "n_doubles": 382753,
+        "rho_agreement": 0.958
+      }
+    },
+    "GRB2-SH3": {
+      "Abundance": {
+        "n_doubles": 23839,
+        "rho_agreement": 0.902
+      },
+      "Binding": {
+        "n_doubles": 32187,
+        "rho_agreement": 0.672
+      }
+    },
+    "PSD95-PDZ3": {
+      "Abundance": {
+        "n_doubles": 4377,
+        "rho_agreement": 0.912
+      },
+      "Binding": {
+        "n_doubles": 5014,
+        "rho_agreement": 0.845
+      }
+    }
+  },
   "baselines": {
     "additive": {
       "GB1": {
