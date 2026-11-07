@@ -494,3 +494,75 @@ def budget_curves(
     fig.savefig(path, dpi=170)
     plt.close(fig)
     return path
+
+
+# --------------------------------------------------------------------------
+# Replication across domains
+# --------------------------------------------------------------------------
+
+#: Domains ordered by how strongly folding and binding actually conflict in the
+#: measured data, weakest first. The ordering is a result, not a convention:
+#: it is how much binding you give up to satisfy the constraint.
+DOMAIN_ORDER: tuple[str, ...] = ("GB1", "GRB2-SH3", "PSD95-PDZ3")
+
+
+def replication_grid(
+    per_domain: dict,
+    path: Path,
+    methods=HEADLINE_METHODS,
+    subtitle: str = "",
+) -> Path:
+    """One column per domain: does the finding hold on more than one protein?
+
+    ``per_domain`` maps a domain name to ``(best_agg, rate_agg)``. Columns are
+    ordered by measured conflict strength, so the reader can see whether the
+    effect tracks how much the two objectives actually fight.
+
+    The top row keeps its own y-scale per domain, because the three proteins
+    have genuinely different energy ranges and a shared scale would flatten the
+    two smaller ones. The bottom row is a rate and shares 0-100% throughout.
+    """
+    apply_style()
+    domains = [d for d in DOMAIN_ORDER if d in per_domain]
+    fig, axes = plt.subplots(2, len(domains), figsize=(4.4 * len(domains), 7.4))
+    axes = np.atleast_2d(axes)
+    if axes.shape[0] == 1:
+        axes = axes.T
+
+    for col, domain in enumerate(domains):
+        best_agg, rate_agg = per_domain[domain]
+        ax_best, ax_rate = axes[0, col], axes[1, col]
+
+        for method in methods:
+            _plot_series(ax_best, best_agg, method)
+            _plot_series(ax_rate, rate_agg, method)
+
+        _tau_axis(ax_best, best_agg["tau"], right_pad=0.05)
+        _tau_axis(ax_rate, rate_agg["tau"], right_pad=0.05)
+        _mark_total_failures(ax_best, best_agg, methods)
+
+        ax_best.set_title(domain, loc="left", pad=8, fontsize=11)
+        ax_rate.set_ylim(-0.04, 1.04)
+        ax_rate.set_yticks([0.0, 0.5, 1.0])
+        ax_rate.set_yticklabels(["0%", "50%", "100%"])
+        ax_rate.set_xlabel("constraint tightness  tau")
+        _style_axes(ax_best)
+        _style_axes(ax_rate)
+        if col > 0:
+            ax_rate.set_ylabel("")
+
+    axes[0, 0].set_ylabel("best feasible binding  ddG\nlower is better")
+    axes[1, 0].set_ylabel("feasibility rate of\nreturned designs")
+
+    _legend(fig, methods)
+    note = ("domains ordered left to right by how strongly the two objectives conflict "
+            "in the measured data")
+    if subtitle:
+        note = f"{note}\n{subtitle}"
+    fig.text(0.008, 0.012, note, fontsize=8, color=INK_MUTED, ha="left", va="bottom")
+
+    fig.tight_layout(rect=(0, 0.075, 1, 0.93))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=170)
+    plt.close(fig)
+    return path

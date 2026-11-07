@@ -79,27 +79,28 @@ shaded gap is hypervolume bought entirely with designs that would fail.
 
 ### 3. The Lagrangian does *not* beat a well-chosen weight — it beats having to choose
 
-The table above is at the **tightest** tau, and that is the one place the
-Lagrangian loses: scalarization at w=0.5 (−3.21) and the fixed penalty at ρ=10
-(−3.19) both beat it (−2.95) there. Across the four tau values swept at default
-settings it leads at three of them and trails only at the tightest:
+At the tightest tau the Lagrangian posts −2.95 against −3.21 for scalarization
+at w=0.5 and −3.19 for the fixed penalty. Ranked on the means, it loses. But
+those gaps do not survive a significance test across the five replicate seeds
+(Welch, p = 0.50 and p = 0.94), and the same holds on all three domains:
 
-| tau (kcal/mol) | −0.27 | +0.51 | +1.28 | +2.05 |
-|---|---|---|---|---|
-| Lagrangian | −2.67 | **−3.37** | **−3.53** | **−3.84** |
-| Fixed penalty | **−2.94** | −3.16 | −3.43 | −3.80 |
-| Scalarization (w=0.5) | −2.75 | −2.98 | −3.09 | −3.22 |
+| domain | ranking at the tightest tau |
+|---|---|
+| GB1 | fixed penalty **=** optimize-then-reject **=** Lagrangian **=** scalarization **>** sweep |
+| GRB2-SH3 | scalarization **=** fixed penalty **=** Lagrangian **>** sweep **>** optimize-then-reject |
+| PSD95-PDZ3 | Lagrangian **=** fixed penalty **=** scalarization **>** sweep **=** optimize-then-reject |
 
-So **the original hypothesis — that the Lagrangian holds where the others
-degrade as tau tightens — is not supported as stated.** If anything the
-direction is reversed: its advantage is largest when the constraint is loose
-and vanishes exactly where the problem is hardest. Signed dual ascent drives the
-multiplier toward zero whenever the population sits comfortably inside the
-feasible region, which is good exploration when tau is loose and leaves the
-search thrashing across the boundary when tau is tight; the multiplier
-trajectories in `results/` show the oscillation.
+`=` means tied on this evidence; `>` means separated at p < 0.05. The leader
+changes between domains, and in every case the top three are indistinguishable.
+**The apparent winner is seed noise.** Reporting that ordering as a result would
+have been inventing a finding, which is why
+[`compare_groups`](src/cpd/metrics.py) now gates every ranking the repo prints.
 
-There is a second reason to distrust the comparison above: w=0.5 and ρ=10 are
+So the honest verdict on the original hypothesis: **not supported.** The
+Lagrangian does not pull ahead as tau tightens — it ties. What it does not do
+is lose, and the earlier draft of this README said it did.
+
+The second reason to distrust a ranking on means: w=0.5 and ρ=10 are
 *hindsight*. A real run gets one guess at the knob. Sweep each rule over its own:
 
 ![What a hyperparameter you must choose in advance costs you](figures/tuning_cost_additive_GRB2-SH3.png)
@@ -143,6 +144,52 @@ ways to hedge a weight choice.
 This is the practical reading of the feasibility-rate column. A rule that spends
 95% of its assays on designs that break the constraint is not merely scoring
 badly on a metric — it is buying nothing with most of its budget.
+
+---
+
+## Does it replicate? Three domains, and a dose-response
+
+One result on one protein is an anecdote. All three ddPCA domains were run, and
+they differ a lot in how much the two objectives actually fight — measured, not
+assumed, as the binding you give up to satisfy the constraint:
+
+| domain | binding given up to satisfy the constraint | top-15 binders destabilizing |
+|---|---|---|
+| GB1 | 0.41 kcal/mol | 73% |
+| GRB2-SH3 | 0.76 kcal/mol | 93% |
+| PSD95-PDZ3 | 1.12 kcal/mol | 80% |
+
+![Best feasible design and feasibility rate across three domains](figures/replication_additive.png)
+
+Two things replicate, and one thing turns out to be conditional.
+
+**Replicates: the weight sweep is reliably worst.** Separated from the leader at
+p < 0.05 in all three domains, and it delivers near-zero feasible designs
+everywhere. This is the most robust negative result in the project.
+
+**Replicates: the constraint-aware rules tie.** In all three domains the top
+three are statistically indistinguishable. No rule wins on design quality.
+
+**Conditional, and this is the useful finding: optimize-then-reject only fails
+when the objectives genuinely conflict.**
+
+| domain | conflict | budget spent on feasible designs | designs filled | verdict |
+|---|---|---|---|---|
+| GB1 | 0.41 | 45% | 100% | **ties the leader** |
+| GRB2-SH3 | 0.76 | 5% | 21% | collapses |
+| PSD95-PDZ3 | 1.12 | 8% | 61% | collapses |
+
+On the domain where the constraint barely bites, ignoring it costs nothing
+measurable. On the two where it bites, the same rule wastes most of its budget
+and cannot fill the design set. The failure tracks the underlying biophysics
+rather than being a quirk of one protein.
+
+That makes the practical advice conditional and testable rather than universal:
+**measure what the constraint costs you at the optimum before choosing a
+method.** It is a cheap calculation on the data you already have — no search
+required — and it tells you whether you can get away with filtering at the end.
+
+Regenerate with `python experiments/replication.py`.
 
 ---
 
@@ -336,10 +383,13 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 107 tests, no data or network needed
+pytest                                    # 116 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
-python experiments/tau_sweep.py --landscape additive --domain GRB2-SH3
+for d in GB1 GRB2-SH3 PSD95-PDZ3; do
+  python experiments/tau_sweep.py --landscape additive --domain $d
+done
+python experiments/replication.py         # cross-domain figure and significance tests
 python experiments/tuning_cost.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
 python experiments/report.py              # regenerates the tables above
@@ -352,8 +402,8 @@ runs the whole pipeline on a built-in toy landscape with no download at all.
 src/cpd/
   variants.py    Mutation, Variant            landscape.py   the three oracles + budget accounting
   objectives.py  the four rules               search.py      the one shared engine
-  methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume
-experiments/     tau_sweep, tuning_cost, budget_curves, report, plotting
+  methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
+experiments/     tau_sweep, replication, tuning_cost, budget_curves, report, plotting
 data/download.py fetches and parses the ddPCA supplementary tables
 ```
 
@@ -364,11 +414,19 @@ how you get it.
 
 ## Limitations
 
-- **One domain carries the headline.** GRB2-SH3 only. GB1 and PSD95-PDZ3 are
-  parsed and available but not swept; GB1's constraint barely binds, so it would
-  show less.
-- **Two small binding domains.** May not transfer to large proteins or to
-  designed binders.
+- **Three domains is still three.** All three ddPCA domains are swept, which is
+  enough to show the effect tracks conflict strength but not enough to fit that
+  relationship. Three points define a direction, not a curve.
+- **Five seeds is a thin basis for a significance test.** Welch at n=5 detects
+  only large effects. "Tied" here means *not shown to differ*, which is weaker
+  than *shown to be equivalent*; a 20-seed run could separate rules this one
+  cannot.
+- **No correction for multiple comparisons.** Each domain runs four pairwise
+  tests against the leader. The separated results (p < 0.05, and p < 0.005 for
+  the clearest) mostly survive a Bonferroni-style adjustment, but the marginal
+  ones do not, and none of the ties would change.
+- **Small binding domains.** May not transfer to large proteins or to designed
+  binders.
 - **ddPCA free energies are inferred** from a thermodynamic model fitted to
   growth-rate assays, not measured by calorimetry. Median standard error on
   GRB2-SH3 binding ddG is 0.06 kcal/mol.

@@ -39,6 +39,9 @@ __all__ = [
     "hypervolume",
     "DesignSetReport",
     "summarize",
+    "SeparationResult",
+    "compare_groups",
+    "rank_with_ties",
 ]
 
 
@@ -233,3 +236,111 @@ def summarize(
         reference=(float(reference[0]), float(reference[1])),
         best_binding_any=float(np.min(points[:, 0])) if points.size else float("nan"),
     )
+
+
+# --------------------------------------------------------------------------
+# Is a difference between two methods real, or seed noise?
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class SeparationResult:
+    """Whether two methods' scores are distinguishable across replicate seeds.
+
+    Evolutionary search is stochastic, so two rules can differ by a visible
+    margin on a plot and still be the same rule as far as the evidence goes.
+    Ranking methods without checking this is how a benchmark invents findings.
+    """
+
+    mean_a: float
+    mean_b: float
+    gap: float
+    """``mean_b - mean_a``. Positive means ``a`` scored lower, which for a
+    minimized objective means ``a`` is better."""
+    p_value: float
+    n_a: int
+    n_b: int
+    separated: bool
+    """True when the difference clears ``alpha``. False means *not shown to
+    differ*, which is not the same as shown to be equal."""
+    alpha: float
+
+
+def compare_groups(
+    a: Sequence[float], b: Sequence[float], alpha: float = 0.05
+) -> SeparationResult:
+    """Welch's t-test between two methods' per-seed scores.
+
+    Welch rather than Student because the rules differ in variance as well as
+    mean -- an unstable rule is a worse rule, and pooling the variance would
+    hide that. NaNs are dropped, which matters here: a NaN means a seed
+    returned no feasible design at all, so a method that failed outright on
+    some seeds is compared on the seeds where it produced a number. Report
+    ``n_a``/``n_b`` alongside, or that exclusion flatters the failing method.
+    """
+    from scipy import stats
+
+    x = np.asarray([v for v in a if not np.isnan(v)], dtype=float)
+    y = np.asarray([v for v in b if not np.isnan(v)], dtype=float)
+    if x.size < 2 or y.size < 2:
+        return SeparationResult(
+            float(np.mean(x)) if x.size else float("nan"),
+            float(np.mean(y)) if y.size else float("nan"),
+            float("nan"), float("nan"), int(x.size), int(y.size), False, alpha,
+        )
+    # Zero variance in both groups breaks the t statistic (scipy warns about
+    # catastrophic cancellation). It happens for real: a rule that fails the
+    # same way on every seed returns an identical score each time. Decide it
+    # on the means instead of letting a NaN through.
+    if np.ptp(x) == 0.0 and np.ptp(y) == 0.0:
+        identical = float(np.mean(x)) == float(np.mean(y))
+        return SeparationResult(
+            mean_a=float(np.mean(x)),
+            mean_b=float(np.mean(y)),
+            gap=float(np.mean(y) - np.mean(x)),
+            p_value=1.0 if identical else 0.0,
+            n_a=int(x.size),
+            n_b=int(y.size),
+            separated=not identical,
+            alpha=alpha,
+        )
+
+    result = stats.ttest_ind(x, y, equal_var=False)
+    p = float(result.pvalue)
+    return SeparationResult(
+        mean_a=float(np.mean(x)),
+        mean_b=float(np.mean(y)),
+        gap=float(np.mean(y) - np.mean(x)),
+        p_value=p,
+        n_a=int(x.size),
+        n_b=int(y.size),
+        separated=bool(p < alpha),
+        alpha=alpha,
+    )
+
+
+def rank_with_ties(
+    scores: dict[str, Sequence[float]], alpha: float = 0.05
+) -> list[tuple[str, float, bool]]:
+    """Order methods best-first, flagging which are indistinguishable from the best.
+
+    Returns ``(name, mean, separated_from_best)`` per method, lower mean first.
+    The best method is always reported as not separated from itself. Anything
+    else carrying ``False`` ties the leader on this evidence and must not be
+    described as beaten by it.
+    """
+    means = {
+        name: float(np.nanmean(values)) if len(values) else float("nan")
+        for name, values in scores.items()
+    }
+    order = sorted(means, key=lambda n: (np.isnan(means[n]), means[n]))
+    if not order:
+        return []
+    best = order[0]
+    out = []
+    for name in order:
+        if name == best:
+            out.append((name, means[name], False))
+        else:
+            out.append((name, means[name], compare_groups(scores[best], scores[name], alpha).separated))
+    return out
