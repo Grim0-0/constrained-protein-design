@@ -72,6 +72,104 @@
     "n_designs_returned": 20,
     "n_seeds": 5
   },
+  "uncertainty": {
+    "GB1": {
+      "fixed_penalty": {
+        "confident_0.01": 0.53,
+        "confident_0.05": 0.69,
+        "expected": 0.916,
+        "nominal": 0.99
+      },
+      "lagrangian": {
+        "confident_0.01": 0.56,
+        "confident_0.05": 0.61,
+        "expected": 0.71,
+        "nominal": 0.7
+      },
+      "optimize_then_reject": {
+        "confident_0.01": 0.32,
+        "confident_0.05": 0.47,
+        "expected": 0.869,
+        "nominal": 1.0
+      },
+      "scalarization_sweep": {
+        "confident_0.01": 0.13,
+        "confident_0.05": 0.16,
+        "expected": 0.241,
+        "nominal": 0.25
+      },
+      "scalarization_w0.5": {
+        "confident_0.01": 1.0,
+        "confident_0.05": 1.0,
+        "expected": 1.0,
+        "nominal": 1.0
+      }
+    },
+    "GRB2-SH3": {
+      "fixed_penalty": {
+        "confident_0.01": 0.74,
+        "confident_0.05": 0.83,
+        "expected": 0.936,
+        "nominal": 0.97
+      },
+      "lagrangian": {
+        "confident_0.01": 0.76,
+        "confident_0.05": 0.76,
+        "expected": 0.798,
+        "nominal": 0.8
+      },
+      "optimize_then_reject": {
+        "confident_0.01": 0.773,
+        "confident_0.05": 0.92,
+        "expected": 0.98,
+        "nominal": 1.0
+      },
+      "scalarization_sweep": {
+        "confident_0.01": 0.0,
+        "confident_0.05": 0.0,
+        "expected": 0.0,
+        "nominal": 0.0
+      },
+      "scalarization_w0.5": {
+        "confident_0.01": 0.94,
+        "confident_0.05": 0.94,
+        "expected": 0.945,
+        "nominal": 0.94
+      }
+    },
+    "PSD95-PDZ3": {
+      "fixed_penalty": {
+        "confident_0.01": 0.57,
+        "confident_0.05": 0.72,
+        "expected": 0.936,
+        "nominal": 1.0
+      },
+      "lagrangian": {
+        "confident_0.01": 0.25,
+        "confident_0.05": 0.28,
+        "expected": 0.384,
+        "nominal": 0.39
+      },
+      "optimize_then_reject": {
+        "confident_0.01": 0.19,
+        "confident_0.05": 0.293,
+        "expected": 0.881,
+        "nominal": 1.0
+      },
+      "scalarization_sweep": {
+        "confident_0.01": 0.0,
+        "confident_0.05": 0.0,
+        "expected": 0.028,
+        "nominal": 0.02
+      },
+      "scalarization_w0.5": {
+        "confident_0.01": 1.0,
+        "confident_0.05": 1.0,
+        "expected": 1.0,
+        "nominal": 1.0
+      }
+    }
+  },
   "windows": {
     "GB1": {
       "minimize": {

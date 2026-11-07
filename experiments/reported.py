@@ -113,6 +113,22 @@ def _window_rows() -> dict:
     return out
 
 
+def _uncertainty_rows() -> dict:
+    """Nominal vs expected vs chance-constrained feasibility, per domain and rule."""
+    out: dict = {}
+    for path in sorted(RESULTS_DIR.glob("uncertainty_summary_*.csv")):
+        frame = pd.read_csv(path)
+        for _, row in frame.iterrows():
+            entry = out.setdefault(str(row["domain"]), {})
+            entry[str(row["rule"])] = {
+                "nominal": round(float(row["nominal"]), 3),
+                "expected": round(float(row["expected"]), 3),
+                "confident_0.05": round(float(row["confident_0.05"]), 3),
+                "confident_0.01": round(float(row["confident_0.01"]), 3),
+            }
+    return out
+
+
 def collect() -> dict:
     """Gather every figure the README quotes, from the committed result files."""
     record: dict = {
@@ -124,6 +140,7 @@ def collect() -> dict:
         },
         "baselines": {track: _verdict_rows(track) for track in TRACKS},
         "windows": _window_rows(),
+        "uncertainty": _uncertainty_rows(),
     }
     missing = [t for t, rows in record["baselines"].items() if not rows]
     if missing:

@@ -366,6 +366,72 @@ badly on a metric — it is buying nothing with most of its budget.
 
 ---
 
+## What the feasibility rate promises, and what it would deliver
+
+Everything above treats the constraint as a noiseless test: a design passes
+when its point estimate clears τ. The published ddPCA tables ship a standard
+error for every variant and the parser already reads them, so that test
+discards information the data provides.
+
+It matters most exactly where the rules work hardest. A constraint-aware
+search is *supposed* to settle near the boundary — that is the entire argument
+for the Lagrangian — and a design sitting just inside the bar, measured to an
+error several times its margin, is a coin flip reported as a pass.
+
+Three readings of the same returned designs:
+
+| | question | |
+|---|---|---|
+| nominal | does the point estimate clear τ? | what the benchmark reports |
+| expected | mean of `P(ΔΔG_folding ≤ τ)` | what the experiment would return |
+| confident(α) | `P(ΔΔG_folding ≤ τ) ≥ 1 − α` | what you can promise |
+
+At α = 0.5 the chance constraint *is* the nominal test, since the median of a
+normal is its mean, so sweeping α downward traces how fast the promise erodes.
+
+### Result
+
+Tightest τ, 5 seeds, shown as nominal → expected → confident at α = 0.05.
+
+| rule | GB1 | GRB2-SH3 | PSD95-PDZ3 |
+|---|---|---|---|
+| Optimize-then-reject | 100% → 87% → **47%** | 100% → 98% → 92% | 100% → 88% → **29%** |
+| Fixed penalty | 99% → 92% → 69% | 97% → 94% → 83% | 100% → 94% → 72% |
+| Lagrangian | 70% → 71% → 61% | 80% → 80% → 76% | 39% → 38% → 28% |
+| Scalarization (`w`=0.5) | 100% → 100% → **100%** | 94% → 94% → 94% | 100% → 100% → **100%** |
+| Scalarization (sweep) | 25% → 24% → 16% | 0% → 0% → 0% | 2% → 3% → 0% |
+
+**Optimize-then-reject reports a perfect 100% on all three domains and keeps
+29–47% of it on two of them.** It filters its trace on point estimates, so it
+selects precisely the designs whose margin is smallest relative to their
+error — the reported number is as high as it is *because* the test is naive.
+At α = 0.01 it falls to 32% and 19%.
+
+**Scalarization at `w`=0.5 loses nothing**, because it never approaches the
+boundary. It pays for that in binding, and it is the rule that leaves the most
+stability unspent. Honouring the error bars reorders the rules on all three
+domains.
+
+So the trade-off the benchmark was set up to measure has a second axis that
+the nominal metric hides entirely: the harder a rule presses the constraint,
+the less its reported feasibility is worth. That is the same failure as the
+[hypervolume problem](#2-hypervolume-rewards-designs-nobody-can-use) — a
+metric reporting a promise it cannot keep — on a different quantity.
+
+### The assumption, stated
+
+Composing errors across substitutions adds the published per-variant variances
+in quadrature, which treats them as independent. They are not exactly: one
+growth-rate assay and one fitted thermodynamic model produce all of them, so
+shared systematic error is plausible and would make the true uncertainty
+larger. **The gaps above are therefore a lower bound on the real ones.**
+
+```
+python experiments/uncertainty.py --domain GRB2-SH3
+```
+
+---
+
 ## Does it replicate? Three domains, and a dose-response
 
 One result on one protein is an anecdote. All three ddPCA domains were run, and
@@ -602,7 +668,7 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 223 tests, no data or network needed
+pytest                                    # 247 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
 
@@ -630,6 +696,9 @@ for d in GB1 GRB2-SH3 PSD95-PDZ3; do
   python experiments/windows.py --landscape additive --domain $d   # both regimes
 done
 python experiments/windows.py --landscape synthetic
+for d in GB1 GRB2-SH3 PSD95-PDZ3; do
+  python experiments/uncertainty.py --domain $d      # nominal vs chance-constrained
+done
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape synthetic --budget 600
 python experiments/report.py              # regenerates the tables above
@@ -652,8 +721,8 @@ src/cpd/
   objectives.py  the four rules, two targets  search.py      the one shared engine
   methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
   baselines.py   greedy + exact optimum
-experiments/     tau_sweep, replication, baselines, windows, tuning_cost,
-                 budget_curves, report, reported, plotting
+experiments/     tau_sweep, replication, baselines, windows, uncertainty,
+                 tuning_cost, budget_curves, report, reported, plotting
 data/download.py fetches and parses the ddPCA supplementary tables
 ```
 

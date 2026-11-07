@@ -31,6 +31,8 @@ from .landscape import Measurement
 __all__ = [
     "as_array",
     "feasibility_rate",
+    "expected_feasibility_rate",
+    "confident_feasibility_rate",
     "feasible_best",
     "feasible_best_k",
     "best_feasible_cost",
@@ -73,6 +75,38 @@ def feasibility_rate(measurements: Sequence[Measurement], tau: float) -> float:
     if points.size == 0:
         return float("nan")
     return float(np.mean(points[:, 1] <= tau))
+
+
+def expected_feasibility_rate(measurements: Sequence[Measurement], tau: float) -> float:
+    """Expected fraction of returned designs that really satisfy the constraint.
+
+    The mean of ``P(ddg_folding <= tau)`` over the returned set, rather than
+    the fraction whose point estimate clears the bar. Those differ whenever
+    designs sit close to the boundary relative to their error -- which is
+    exactly where a constraint-aware search puts them, so the gap is largest
+    for the rules that work hardest.
+
+    :func:`feasibility_rate` is what a benchmark reports. This is what the
+    experiment would return. Reporting both, and the gap, is the point.
+    """
+    if not measurements:
+        return float("nan")
+    return float(np.mean([m.feasibility_probability(tau) for m in measurements]))
+
+
+def confident_feasibility_rate(
+    measurements: Sequence[Measurement], tau: float, alpha: float = 0.05
+) -> float:
+    """Fraction of returned designs passing ``P(ddg_folding <= tau) >= 1 - alpha``.
+
+    The chance-constrained reading. ``alpha`` is the risk tolerated per design;
+    at ``alpha = 0.5`` this equals :func:`feasibility_rate`, because the median
+    of a normal is its mean, so sweeping ``alpha`` from 0.5 downward traces how
+    fast a reported feasibility rate erodes once the error bars are honoured.
+    """
+    if not measurements:
+        return float("nan")
+    return float(np.mean([m.is_confidently_feasible(tau, alpha) for m in measurements]))
 
 
 def feasible_best(measurements: Sequence[Measurement], tau: float) -> float:

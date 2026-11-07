@@ -204,3 +204,88 @@ def test_the_hit_rate_of_an_empty_set_is_nan():
     from cpd.objectives import Window
 
     assert math.isnan(target_hit_rate([], 1.0, Window(-2.5, -2.0)))
+
+
+# --------------------------------------------------------------------------
+# Feasibility under measurement uncertainty
+# --------------------------------------------------------------------------
+
+
+def test_a_design_far_inside_the_bar_is_confidently_feasible():
+    m = Measurement(-2.0, -1.0, 0.1, 0.05)
+    assert m.feasibility_probability(0.0) == pytest.approx(1.0, abs=1e-6)
+    assert m.is_confidently_feasible(0.0, alpha=0.01)
+
+
+def test_a_design_just_inside_the_bar_is_a_coin_flip():
+    """The case the nominal test reports as a clean pass."""
+    m = Measurement(-2.0, -0.05, 0.1, 0.30)
+    assert m.is_feasible(0.0)
+    assert m.feasibility_probability(0.0) == pytest.approx(0.566, abs=0.005)
+    assert not m.is_confidently_feasible(0.0, alpha=0.05)
+
+
+def test_a_design_exactly_on_the_bar_is_half_feasible():
+    m = Measurement(-2.0, 0.0, 0.1, 0.2)
+    assert m.feasibility_probability(0.0) == pytest.approx(0.5)
+
+
+def test_with_no_reported_error_the_test_collapses_to_the_nominal_one():
+    for folding, want in ((-0.5, 1.0), (0.5, 0.0)):
+        m = Measurement(-2.0, folding, None, None)
+        assert m.feasibility_probability(0.0) == want
+
+
+def test_a_bad_alpha_is_rejected():
+    m = Measurement(-2.0, -0.5, 0.1, 0.1)
+    for bad in (0.0, 1.0, -0.1, 1.5):
+        with pytest.raises(ValueError, match="alpha"):
+            m.is_confidently_feasible(0.0, alpha=bad)
+
+
+def test_expected_rate_sits_below_the_nominal_rate_near_the_boundary():
+    from cpd.metrics import expected_feasibility_rate, feasibility_rate
+
+    designs = [Measurement(-2.0, -0.05, 0.1, 0.3) for _ in range(4)]
+    assert feasibility_rate(designs, 0.0) == pytest.approx(1.0)
+    assert expected_feasibility_rate(designs, 0.0) < 0.7
+
+
+def test_expected_rate_equals_the_nominal_rate_when_errors_are_negligible():
+    from cpd.metrics import expected_feasibility_rate, feasibility_rate
+
+    designs = [Measurement(-2.0, -1.0, 0.01, 0.01), Measurement(-1.0, 1.0, 0.01, 0.01)]
+    assert expected_feasibility_rate(designs, 0.0) == pytest.approx(
+        feasibility_rate(designs, 0.0), abs=1e-6
+    )
+
+
+def test_alpha_one_half_reproduces_the_nominal_feasibility_rate():
+    """The nominal test is the chance constraint at alpha = 0.5."""
+    from cpd.metrics import confident_feasibility_rate, feasibility_rate
+
+    designs = [
+        Measurement(-2.0, -0.05, 0.1, 0.30),
+        Measurement(-1.0, 0.40, 0.1, 0.30),
+        Measurement(-3.0, -2.00, 0.1, 0.30),
+    ]
+    assert confident_feasibility_rate(designs, 0.0, alpha=0.5) == pytest.approx(
+        feasibility_rate(designs, 0.0)
+    )
+
+
+def test_tightening_alpha_never_raises_the_confident_rate():
+    from cpd.metrics import confident_feasibility_rate
+
+    designs = [Measurement(-2.0, -0.1 * i, 0.1, 0.25) for i in range(8)]
+    rates = [confident_feasibility_rate(designs, 0.0, a) for a in (0.5, 0.2, 0.1, 0.05, 0.01)]
+    assert all(a >= b for a, b in zip(rates, rates[1:])), rates
+
+
+def test_the_uncertainty_metrics_are_nan_for_an_empty_set():
+    import math
+
+    from cpd.metrics import confident_feasibility_rate, expected_feasibility_rate
+
+    assert math.isnan(expected_feasibility_rate([], 0.0))
+    assert math.isnan(confident_feasibility_rate([], 0.0))

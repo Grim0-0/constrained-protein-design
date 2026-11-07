@@ -332,3 +332,80 @@ def test_the_headline_window_claim_counts_only_the_domains_that_support_it(readm
     flat = " ".join(readme.split())
     assert "On all three measured domains the finding flips" in flat
     assert "The synthetic track does not reproduce it" in flat
+
+
+# --------------------------------------------------------------------------
+# The uncertainty table
+# --------------------------------------------------------------------------
+
+UNCERTAINTY_HEADER = "| rule | GB1 | GRB2-SH3 | PSD95-PDZ3 |"
+DISPLAY_TO_KEY = {
+    "Optimize-then-reject": "optimize_then_reject",
+    "Fixed penalty": "fixed_penalty",
+    "Lagrangian": "lagrangian",
+    "Scalarization (`w`=0.5)": "scalarization_w0.5",
+    "Scalarization (sweep)": "scalarization_sweep",
+}
+
+
+def _uncertainty_table(readme: str) -> dict[str, list[str]]:
+    lines = readme.splitlines()
+    start = lines.index(UNCERTAINTY_HEADER)
+    rows = {}
+    for body in lines[start + 2:]:
+        if not body.startswith("|"):
+            break
+        cells = [c.strip() for c in body.strip().strip("|").split("|")]
+        rows[cells[0]] = cells[1:]
+    return rows
+
+
+def _percents(cell: str) -> list[float]:
+    """The nominal -> expected -> confident triple from one cell, as fractions."""
+    text = cell.replace("**", "")
+    return [int(v) / 100.0 for v in re.findall(r"(\d+)%", text)]
+
+
+@pytest.mark.parametrize("display,key", list(DISPLAY_TO_KEY.items()))
+def test_the_uncertainty_table_matches_the_record(readme, record, display, key):
+    rows = _uncertainty_table(readme)
+    assert display in rows, f"{display} has no row in the uncertainty table"
+    for column, domain in enumerate(("GB1", "GRB2-SH3", "PSD95-PDZ3")):
+        stored = record["uncertainty"][domain][key]
+        got = _percents(rows[display][column])
+        assert len(got) == 3, f"{display}/{domain}: expected three percentages, got {got}"
+        for value, name in zip(got, ("nominal", "expected", "confident_0.05")):
+            # The README rounds to whole percent, so half a point of slack,
+            # plus a hair so an exact 0.005 does not fail on binary rounding.
+            assert abs(value - stored[name]) <= TOLERANCE, (
+                f"{display}/{domain} {name}: README says {value:.1%}, "
+                f"record says {stored[name]:.1%}"
+            )
+
+
+def test_the_prose_names_the_rule_that_actually_degrades_most(readme, record):
+    """The headline claim must follow the data, not the other way round."""
+    worst = {}
+    for domain, rules in record["uncertainty"].items():
+        # Among rules that report a high nominal rate, which keeps least of it?
+        candidates = {r: v for r, v in rules.items() if v["nominal"] >= 0.9}
+        worst[domain] = min(candidates, key=lambda r: candidates[r]["confident_0.05"])
+    assert worst["GB1"] == "optimize_then_reject"
+    assert worst["PSD95-PDZ3"] == "optimize_then_reject"
+    flat = " ".join(readme.split())
+    assert "Optimize-then-reject reports a perfect 100% on all three domains" in flat
+
+    otr = record["uncertainty"]
+    low = sorted(
+        otr[d]["optimize_then_reject"]["confident_0.05"] for d in ("GB1", "PSD95-PDZ3")
+    )
+    assert f"{low[0] * 100:.0f}–{low[1]:.0%} of it on two of them" in flat, (
+        "the range quoted for optimize-then-reject no longer matches the record"
+    )
+
+
+def test_the_independence_assumption_is_stated(readme):
+    """A propagated error that assumes independence has to say so."""
+    flat = " ".join(readme.split())
+    assert "quadrature, which treats them as independent" in flat
+    assert "lower bound on the real ones" in flat

@@ -70,6 +70,41 @@ class Measurement:
         """How far past ``tau`` this design sits; zero when feasible."""
         return max(0.0, self.ddg_folding - tau)
 
+    def feasibility_probability(self, tau: float) -> float:
+        """``P(ddg_folding <= tau)``, treating the reading as normal about its SE.
+
+        :meth:`is_feasible` answers a question the data cannot actually
+        settle. A design sitting 0.05 kcal/mol inside the bar, measured to a
+        standard error of 0.30, is not meaningfully feasible -- it is a coin
+        flip reported as a pass. The published ddPCA tables ship a standard
+        error for every variant, so the honest version of the test is
+        available and simply was not being used.
+
+        Normality is the assumption the ddPCA inference itself makes about its
+        free-energy estimates, so this inherits it rather than adding one.
+        With no reported error the answer collapses to :meth:`is_feasible`,
+        which is the right behaviour for the synthetic track and for Track 1
+        read as exact.
+        """
+        sigma = self.ddg_folding_se or 0.0
+        if sigma <= 0.0:
+            return 1.0 if self.ddg_folding <= tau else 0.0
+        from math import erf, sqrt
+
+        z = (tau - self.ddg_folding) / sigma
+        return 0.5 * (1.0 + erf(z / sqrt(2.0)))
+
+    def is_confidently_feasible(self, tau: float, alpha: float = 0.05) -> bool:
+        """True when ``P(ddg_folding <= tau) >= 1 - alpha``.
+
+        The chance-constrained test. ``alpha`` is the risk of handing over a
+        design that turns out to break the constraint; ``alpha = 0.5`` is the
+        nominal test, since the median of a normal is its mean.
+        """
+        if not 0.0 < alpha < 1.0:
+            raise ValueError(f"alpha must lie strictly in (0, 1), got {alpha}")
+        return self.feasibility_probability(tau) >= 1.0 - alpha
+
 
 class Landscape(ABC):
     """An oracle mapping variants to measured (or modelled) free energies."""
