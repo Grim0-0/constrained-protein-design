@@ -129,6 +129,26 @@ def _uncertainty_rows() -> dict:
     return out
 
 
+def _diversity_rows() -> dict:
+    """How spread out each rule's delivered set is, per domain."""
+    out: dict = {}
+    for path in sorted(RESULTS_DIR.glob("diversity_summary_*.csv")):
+        frame = pd.read_csv(path)
+        for _, row in frame.iterrows():
+            out.setdefault(str(row["domain"]), {})[str(row["rule"])] = {
+                "filled": round(float(row["filled"]), 3),
+                "mean_distance": round(float(row["mean_distance"]), 2),
+                "positions_used": round(float(row["positions_used"]), 1),
+                "n_feasible": round(float(row["n_feasible"]), 1),
+                "feasible_mean_distance": (
+                    None if np.isnan(row["feasible_mean_distance"])
+                    else round(float(row["feasible_mean_distance"]), 2)
+                ),
+                "feasible_positions_used": round(float(row["feasible_positions_used"]), 1),
+            }
+    return out
+
+
 def collect() -> dict:
     """Gather every figure the README quotes, from the committed result files."""
     record: dict = {
@@ -141,6 +161,7 @@ def collect() -> dict:
         "baselines": {track: _verdict_rows(track) for track in TRACKS},
         "windows": _window_rows(),
         "uncertainty": _uncertainty_rows(),
+        "diversity": _diversity_rows(),
     }
     missing = [t for t, rows in record["baselines"].items() if not rows]
     if missing:

@@ -432,6 +432,62 @@ python experiments/uncertainty.py --domain GRB2-SH3
 
 ---
 
+## Twenty designs, or one design twenty times?
+
+Every rule is asked for twenty designs and judged on how good the best one is
+and how many clear the constraint. Neither question notices whether the twenty
+are *different*. A set that collapses onto one region spends an experimental
+budget sized for twenty bets on a single bet, and nothing reported so far
+would distinguish it from a spread-out set.
+
+Mean pairwise Hamming distance over the **feasible** designs each rule hands
+over, in substituted positions, at the tightest τ:
+
+| rule | GB1 | GRB2-SH3 | PSD95-PDZ3 |
+|---|---|---|---|
+| Lagrangian | 2.55 | 2.50 | 1.58 |
+| Fixed penalty | 2.37 | 2.54 | 2.42 |
+| Scalarization (`w`=0.5) | 3.15 | 2.16 | 3.08 |
+| Scalarization (sweep) | 3.73 | — | 1.00 |
+| Optimize-then-reject | 3.27 | **2.17** | 2.67 |
+
+### The suspicion held on one domain of three
+
+Optimize-then-reject already fills only part of the set it was asked for. The
+question was whether what survives also sits in one place — a second cost on
+top of the first.
+
+**On GRB2-SH3, yes.** It fills 21% of the set, and those few designs touch
+**4.0 distinct positions** against 8.0–8.6 for the constraint-aware rules. It
+under-fills *and* concentrates.
+
+**On GB1 and PSD95-PDZ3, no.** It fills 100% and 61%, and its surviving
+designs are more spread out than the constraint-aware rules', not less
+(3.27 and 2.67 against peer averages of 2.69 and 2.36). The suspicion is
+wrong on those two and is reported that way.
+
+The pattern that does hold is the familiar one: GRB2-SH3 is the domain where
+the two objectives conflict hardest, and it is the only one where
+optimize-then-reject fails in both ways at once. Where the constraint is cheap
+the rule is merely redundant; where it is expensive, it is narrow as well as
+thin.
+
+### Diversity alone is not a virtue
+
+The scalarization sweep posts the highest raw diversity of any rule — 4.1–4.2
+mean distance across 14–16 positions — while returning **zero** feasible
+designs on GRB2-SH3 and 0.4 on PSD95-PDZ3. It is spread widely across
+sequence space that cannot be used. Diversity is only worth reading next to
+feasibility, which is why both columns are reported together and why the
+table above is computed over the feasible subset rather than the whole
+delivered set.
+
+```
+python experiments/diversity.py --domain GRB2-SH3
+```
+
+---
+
 ## Does it replicate? Three domains, and a dose-response
 
 One result on one protein is an anecdote. All three ddPCA domains were run, and
@@ -668,7 +724,7 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 247 tests, no data or network needed
+pytest                                    # 264 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
 
@@ -699,6 +755,9 @@ python experiments/windows.py --landscape synthetic
 for d in GB1 GRB2-SH3 PSD95-PDZ3; do
   python experiments/uncertainty.py --domain $d      # nominal vs chance-constrained
 done
+for d in GB1 GRB2-SH3 PSD95-PDZ3; do
+  python experiments/diversity.py --domain $d         # is the returned set varied?
+done
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape synthetic --budget 600
 python experiments/report.py              # regenerates the tables above
@@ -722,7 +781,7 @@ src/cpd/
   methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
   baselines.py   greedy + exact optimum
 experiments/     tau_sweep, replication, baselines, windows, uncertainty,
-                 tuning_cost, budget_curves, report, reported, plotting
+                 diversity, tuning_cost, budget_curves, report, reported, plotting
 data/download.py fetches and parses the ddPCA supplementary tables
 ```
 

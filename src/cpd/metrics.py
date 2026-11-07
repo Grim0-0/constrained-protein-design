@@ -41,6 +41,8 @@ __all__ = [
     "violation_severity",
     "pareto_mask",
     "hypervolume",
+    "DiversityReport",
+    "diversity",
     "DesignSetReport",
     "summarize",
     "SeparationResult",
@@ -253,6 +255,59 @@ def hypervolume(points: np.ndarray, reference: Sequence[float]) -> float:
         total += (ref[0] - x) * (prev_y - y)
         prev_y = y
     return float(total)
+
+
+@dataclass(frozen=True)
+class DiversityReport:
+    """How much of the design space a returned set actually covers.
+
+    A method returns twenty designs, but twenty variations on one design is
+    not twenty designs. The experimental budget a set is sized for assumes
+    they probe different things; a set that collapses onto one region spends
+    that budget on a single bet. Nothing else in this benchmark would notice.
+    """
+
+    n_designs: int
+    n_unique: int
+    """Distinct variants. Fewer than ``n_designs`` means duplicates were returned."""
+    mean_pairwise_distance: float
+    """Mean Hamming distance over all distinct pairs. NaN for fewer than two."""
+    min_pairwise_distance: float
+    """Closest pair. 0 means two returned designs are identical."""
+    n_positions_used: int
+    """Distinct positions touched anywhere in the set."""
+    mean_order: float
+    """Mean number of substitutions per design, for context on the distances."""
+
+    def as_dict(self) -> dict:
+        return asdict(self)
+
+
+def diversity(variants: Sequence) -> DiversityReport:
+    """Summarize how different a returned set of designs really is."""
+    unique = list(dict.fromkeys(variants))
+    n = len(variants)
+    if n == 0:
+        return DiversityReport(0, 0, float("nan"), float("nan"), 0, float("nan"))
+    positions = {p for v in variants for p in v.positions}
+    mean_order = float(np.mean([v.order for v in variants]))
+    if n < 2:
+        return DiversityReport(
+            n, len(unique), float("nan"), float("nan"), len(positions), mean_order
+        )
+    pairs = [
+        variants[i].distance(variants[j])
+        for i in range(n)
+        for j in range(i + 1, n)
+    ]
+    return DiversityReport(
+        n_designs=n,
+        n_unique=len(unique),
+        mean_pairwise_distance=float(np.mean(pairs)),
+        min_pairwise_distance=float(np.min(pairs)),
+        n_positions_used=len(positions),
+        mean_order=mean_order,
+    )
 
 
 @dataclass(frozen=True)

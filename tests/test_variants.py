@@ -70,3 +70,37 @@ def test_apply_to_catches_a_numbering_offset():
     off_the_end = Variant.of([Mutation(99, "E", "K")])
     with pytest.raises(ValueError, match="outside a sequence"):
         off_the_end.apply_to(sequence)
+
+
+# --------------------------------------------------------------------------
+# Hamming distance between designs
+# --------------------------------------------------------------------------
+
+
+def test_a_variant_is_zero_distance_from_itself():
+    v = Variant.parse("E24K,L31P")
+    assert v.distance(v) == 0
+    assert v.distance(Variant.parse("L31P,E24K")) == 0  # order must not matter
+
+
+def test_the_same_position_with_a_different_residue_counts_once():
+    assert Variant.parse("E24K").distance(Variant.parse("E24R")) == 1
+
+
+def test_a_position_one_side_leaves_wild_type_counts():
+    assert Variant.parse("E24K,L31P").distance(Variant.parse("E24K")) == 1
+
+
+def test_disjoint_designs_count_every_position_on_both_sides():
+    assert Variant.parse("E24K,L31P").distance(Variant.parse("T53G")) == 3
+
+
+def test_distance_is_symmetric():
+    a, b = Variant.parse("E24K,L31P"), Variant.parse("E24R,T53G")
+    assert a.distance(b) == b.distance(a)
+
+
+def test_the_wild_type_is_its_own_order_away_from_anything():
+    wt = Variant()
+    v = Variant.parse("E24K,L31P,T53G")
+    assert wt.distance(v) == v.order

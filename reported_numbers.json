@@ -61,6 +61,134 @@
       }
     }
   },
+  "diversity": {
+    "GB1": {
+      "fixed_penalty": {
+        "feasible_mean_distance": 2.37,
+        "feasible_positions_used": 6.0,
+        "filled": 1.0,
+        "mean_distance": 2.35,
+        "n_feasible": 19.8,
+        "positions_used": 6.0
+      },
+      "lagrangian": {
+        "feasible_mean_distance": 2.55,
+        "feasible_positions_used": 6.2,
+        "filled": 1.0,
+        "mean_distance": 2.68,
+        "n_feasible": 14.0,
+        "positions_used": 7.4
+      },
+      "optimize_then_reject": {
+        "feasible_mean_distance": 3.27,
+        "feasible_positions_used": 8.4,
+        "filled": 1.0,
+        "mean_distance": 3.27,
+        "n_feasible": 20.0,
+        "positions_used": 8.4
+      },
+      "scalarization_sweep": {
+        "feasible_mean_distance": 3.73,
+        "feasible_positions_used": 6.6,
+        "filled": 1.0,
+        "mean_distance": 4.1,
+        "n_feasible": 5.0,
+        "positions_used": 14.0
+      },
+      "scalarization_w0.5": {
+        "feasible_mean_distance": 3.15,
+        "feasible_positions_used": 6.6,
+        "filled": 1.0,
+        "mean_distance": 3.15,
+        "n_feasible": 20.0,
+        "positions_used": 6.6
+      }
+    },
+    "GRB2-SH3": {
+      "fixed_penalty": {
+        "feasible_mean_distance": 2.54,
+        "feasible_positions_used": 8.0,
+        "filled": 1.0,
+        "mean_distance": 2.53,
+        "n_feasible": 19.4,
+        "positions_used": 8.0
+      },
+      "lagrangian": {
+        "feasible_mean_distance": 2.5,
+        "feasible_positions_used": 8.6,
+        "filled": 1.0,
+        "mean_distance": 2.5,
+        "n_feasible": 16.0,
+        "positions_used": 9.4
+      },
+      "optimize_then_reject": {
+        "feasible_mean_distance": 2.17,
+        "feasible_positions_used": 4.0,
+        "filled": 0.21,
+        "mean_distance": 2.17,
+        "n_feasible": 4.2,
+        "positions_used": 4.0
+      },
+      "scalarization_sweep": {
+        "feasible_mean_distance": null,
+        "feasible_positions_used": 0.0,
+        "filled": 1.0,
+        "mean_distance": 4.22,
+        "n_feasible": 0.0,
+        "positions_used": 15.2
+      },
+      "scalarization_w0.5": {
+        "feasible_mean_distance": 2.16,
+        "feasible_positions_used": 8.0,
+        "filled": 1.0,
+        "mean_distance": 2.25,
+        "n_feasible": 18.8,
+        "positions_used": 8.6
+      }
+    },
+    "PSD95-PDZ3": {
+      "fixed_penalty": {
+        "feasible_mean_distance": 2.42,
+        "feasible_positions_used": 5.6,
+        "filled": 1.0,
+        "mean_distance": 2.42,
+        "n_feasible": 20.0,
+        "positions_used": 5.6
+      },
+      "lagrangian": {
+        "feasible_mean_distance": 1.58,
+        "feasible_positions_used": 3.4,
+        "filled": 1.0,
+        "mean_distance": 2.63,
+        "n_feasible": 7.8,
+        "positions_used": 7.2
+      },
+      "optimize_then_reject": {
+        "feasible_mean_distance": 2.67,
+        "feasible_positions_used": 7.4,
+        "filled": 0.61,
+        "mean_distance": 2.67,
+        "n_feasible": 12.2,
+        "positions_used": 7.4
+      },
+      "scalarization_sweep": {
+        "feasible_mean_distance": 1.0,
+        "feasible_positions_used": 0.8,
+        "filled": 1.0,
+        "mean_distance": 4.21,
+        "n_feasible": 0.4,
+        "positions_used": 15.8
+      },
+      "scalarization_w0.5": {
+        "feasible_mean_distance": 3.08,
+        "feasible_positions_used": 6.4,
+        "filled": 1.0,
+        "mean_distance": 3.08,
+        "n_feasible": 20.0,
+        "positions_used": 6.4
+      }
+    }
+  },
   "settings": {
     "budget": 1200,
     "budgets_used": [

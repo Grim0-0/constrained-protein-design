@@ -289,3 +289,65 @@ def test_the_uncertainty_metrics_are_nan_for_an_empty_set():
 
     assert math.isnan(expected_feasibility_rate([], 0.0))
     assert math.isnan(confident_feasibility_rate([], 0.0))
+
+
+# --------------------------------------------------------------------------
+# Diversity of the delivered set
+# --------------------------------------------------------------------------
+
+
+def test_a_set_of_identical_designs_has_no_diversity():
+    from cpd.metrics import diversity
+    from cpd.variants import Variant
+
+    report = diversity([Variant.parse("E24K,L31P")] * 4)
+    assert report.n_designs == 4
+    assert report.n_unique == 1
+    assert report.mean_pairwise_distance == pytest.approx(0.0)
+    assert report.min_pairwise_distance == pytest.approx(0.0)
+    assert report.n_positions_used == 2
+
+
+def test_a_spread_out_set_scores_higher_than_a_concentrated_one():
+    from cpd.metrics import diversity
+    from cpd.variants import Variant
+
+    concentrated = [Variant.parse(t) for t in ("E24K,L31P", "E24R,L31P", "E24K,L31A")]
+    spread = [Variant.parse(t) for t in ("E24K,L31P", "T53G", "E24R")]
+    assert (
+        diversity(spread).mean_pairwise_distance
+        > diversity(concentrated).mean_pairwise_distance
+    )
+    assert diversity(spread).n_positions_used >= diversity(concentrated).n_positions_used
+
+
+def test_duplicates_are_counted_but_not_hidden():
+    """A method returning the same design twice has returned one design."""
+    from cpd.metrics import diversity
+    from cpd.variants import Variant
+
+    report = diversity([Variant.parse("E24K"), Variant.parse("E24K"), Variant.parse("T53G")])
+    assert report.n_designs == 3
+    assert report.n_unique == 2
+    assert report.min_pairwise_distance == pytest.approx(0.0)
+
+
+def test_diversity_of_a_single_design_is_undefined_not_zero():
+    import math
+
+    from cpd.metrics import diversity
+    from cpd.variants import Variant
+
+    report = diversity([Variant.parse("E24K")])
+    assert math.isnan(report.mean_pairwise_distance)
+    assert report.n_positions_used == 1
+
+
+def test_diversity_of_an_empty_set():
+    import math
+
+    from cpd.metrics import diversity
+
+    report = diversity([])
+    assert report.n_designs == 0
+    assert math.isnan(report.mean_pairwise_distance)

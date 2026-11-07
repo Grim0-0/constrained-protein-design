@@ -409,3 +409,75 @@ def test_the_independence_assumption_is_stated(readme):
     flat = " ".join(readme.split())
     assert "quadrature, which treats them as independent" in flat
     assert "lower bound on the real ones" in flat
+
+
+# --------------------------------------------------------------------------
+# The diversity table
+# --------------------------------------------------------------------------
+
+DIVERSITY_RULES = {
+    "Lagrangian": "lagrangian",
+    "Fixed penalty": "fixed_penalty",
+    "Scalarization (`w`=0.5)": "scalarization_w0.5",
+    "Scalarization (sweep)": "scalarization_sweep",
+    "Optimize-then-reject": "optimize_then_reject",
+}
+
+
+def _diversity_table(readme: str) -> dict[str, list[str]]:
+    """The diversity table, distinguished from the uncertainty one by its cells.
+
+    Both tables share a header, so the diversity table is the one whose cells
+    hold a bare number rather than a percentage triple.
+    """
+    lines = readme.splitlines()
+    for start, line in enumerate(lines):
+        if line != UNCERTAINTY_HEADER:
+            continue
+        rows = {}
+        for body in lines[start + 2:]:
+            if not body.startswith("|"):
+                break
+            cells = [c.strip() for c in body.strip().strip("|").split("|")]
+            rows[cells[0]] = cells[1:]
+        if not any("%" in c for cells in rows.values() for c in cells):
+            return rows
+    raise AssertionError("could not find the diversity table in the README")
+
+
+@pytest.mark.parametrize("display,key", list(DIVERSITY_RULES.items()))
+def test_the_diversity_table_matches_the_record(readme, record, display, key):
+    rows = _diversity_table(readme)
+    assert display in rows, f"{display} has no row in the diversity table"
+    for column, domain in enumerate(("GB1", "GRB2-SH3", "PSD95-PDZ3")):
+        stored = record["diversity"][domain][key]["feasible_mean_distance"]
+        cell = rows[display][column].replace("**", "").strip()
+        if stored is None:
+            assert cell in ("\u2014", "-", "none"), (
+                f"{display}/{domain}: no feasible designs, so the cell must be a dash"
+            )
+            continue
+        got = _number(cell)
+        assert got is not None, f"{display}/{domain}: no number in the cell"
+        assert abs(got - stored) <= 0.0051, (
+            f"{display}/{domain}: README says {got}, record says {stored}"
+        )
+
+
+def test_the_prose_names_the_domains_where_the_suspicion_held(readme, record):
+    """Whether optimize-then-reject concentrates is a finding, not an assumption."""
+    peers = ("lagrangian", "fixed_penalty", "scalarization_w0.5")
+    concentrates = []
+    for domain, rules in record["diversity"].items():
+        mine = rules["optimize_then_reject"]["feasible_mean_distance"]
+        theirs = [rules[r]["feasible_mean_distance"] for r in peers]
+        if mine is not None and all(t is not None for t in theirs):
+            if mine < sum(theirs) / len(theirs):
+                concentrates.append(domain)
+    assert concentrates == ["GRB2-SH3"], (
+        f"which domains optimize-then-reject concentrates on has changed: "
+        f"{concentrates}; the README says GRB2-SH3 only"
+    )
+    flat = " ".join(readme.split())
+    assert "On GRB2-SH3, yes." in flat
+    assert "On GB1 and PSD95-PDZ3, no." in flat

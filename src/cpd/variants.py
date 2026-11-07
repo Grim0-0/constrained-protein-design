@@ -112,6 +112,21 @@ class Variant:
         """Return a copy with the substitution at ``position`` reverted to wild type."""
         return Variant(tuple(m for m in self.mutations if m.position != position))
 
+    def distance(self, other: "Variant") -> int:
+        """Hamming distance: positions where the two differ in residue.
+
+        A position counts when the two carry different substitutions there,
+        and when one carries a substitution the other leaves wild type. Two
+        designs hitting the same position with the same residue contribute
+        nothing, which is what makes this a measure of how much of the design
+        space a returned set actually covers.
+        """
+        mine = {m.position: m.mut for m in self.mutations}
+        theirs = {m.position: m.mut for m in other.mutations}
+        return sum(
+            1 for p in mine.keys() | theirs.keys() if mine.get(p) != theirs.get(p)
+        )
+
     def apply_to(self, wt_sequence: str) -> str:
         """Apply the substitutions to ``wt_sequence`` (a 1-indexed residue string).
 
