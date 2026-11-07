@@ -26,10 +26,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Sequence
 
-from .landscape import BudgetedOracle, Landscape, MeasuredAdditiveLandscape, Measurement
+from .landscape import (
+    BudgetedOracle,
+    BudgetExhausted,
+    Landscape,
+    MeasuredAdditiveLandscape,
+    Measurement,
+)
 from .variants import Mutation, Variant
 
-__all__ = ["GreedyResult", "greedy_feasible", "exact_optimum", "pareto_prune"]
+__all__ = [
+    "GreedyResult",
+    "greedy_feasible",
+    "greedy_forward",
+    "exact_optimum",
+    "pareto_prune",
+]
 
 
 @dataclass(frozen=True)
@@ -114,6 +126,70 @@ def greedy_feasible(
     if delivered.ddg_folding > tau:
         return GreedyResult(variant, None, oracle.n_unique, variant.order)
     return GreedyResult(variant, delivered, oracle.n_unique, variant.order)
+
+
+def greedy_forward(
+    landscape: Landscape,
+    tau: float,
+    max_order: int | None = None,
+    budget: int | None = None,
+) -> GreedyResult:
+    """Forward selection against the true oracle: the strong baseline.
+
+    At each step, score every legal single addition on the real oracle and keep
+    the feasible one that improves binding most. Stop when nothing feasible
+    improves, at the order cap, or when the budget runs out.
+
+    Unlike :func:`greedy_feasible` this never trusts an additive plan, so
+    epistasis cannot mislead it -- it pays for the truth at every step. It is
+    also myopic and much more expensive, costing up to ``max_order`` passes
+    over the whole single-mutant library. Both properties matter for the
+    comparison it is used in: if a budgeted search cannot beat even this, the
+    search is not what produces the result.
+    """
+    max_order = landscape.max_order if max_order is None else max_order
+    if max_order < 1:
+        raise ValueError(f"max_order must be at least 1, got {max_order}")
+    oracle = BudgetedOracle(landscape, budget=budget)
+
+    chosen: list[Mutation] = []
+    used: set[int] = set()
+    best: Measurement | None = None
+
+    while len(chosen) < max_order:
+        candidate_best: tuple[Mutation, Measurement, int] | None = None
+        exhausted = False
+        for position in landscape.positions:
+            if position in used:
+                continue
+            for mutation in landscape.candidate_mutations(position):
+                trial = Variant.of(chosen + [mutation])
+                if not landscape.contains(trial):
+                    continue
+                try:
+                    m = oracle(trial)
+                except BudgetExhausted:
+                    exhausted = True
+                    break
+                if m.ddg_folding > tau:
+                    continue
+                if best is not None and m.ddg_binding >= best.ddg_binding:
+                    continue
+                if candidate_best is None or m.ddg_binding < candidate_best[1].ddg_binding:
+                    candidate_best = (mutation, m, position)
+            if exhausted:
+                break
+        if candidate_best is None:
+            break
+        chosen.append(candidate_best[0])
+        used.add(candidate_best[2])
+        best = candidate_best[1]
+        if exhausted:
+            break
+
+    if best is None:
+        return GreedyResult(Variant(), None, oracle.n_unique, 0)
+    return GreedyResult(Variant.of(chosen), best, oracle.n_unique, len(chosen))
 
 
 def pareto_prune(front: Sequence[tuple[float, float]]) -> list[tuple[float, float]]:

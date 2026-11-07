@@ -68,11 +68,18 @@ fraction of what was actually attainable, not just relative to the other rules.
 At the tightest constraint, best of 5 seeds per rule, one-sample *t* against the
 deterministic baseline:
 
-| domain | exact optimum | greedy, no search | best rule | gap | *p* | verdict |
-|---|---|---|---|---|---|---|
-| GB1 | −2.47 | **−1.97** | −2.01 (fixed penalty) | +0.04 | 0.81 | tied |
-| GRB2-SH3 | −3.79 | **−2.58** | −3.21 (scalarization `w`=0.5) | +0.63 | 0.096 | not separated |
-| PSD95-PDZ3 | −2.44 | **−2.20** | −1.82 (Lagrangian) | −0.38 | **0.019** | **the sort wins** |
+| domain | exact optimum | greedy, rank once | greedy, forward | best rule | gap | *p* | verdict |
+|---|---|---|---|---|---|---|---|
+| GB1 | −2.47 | **−1.97** | −0.82 | −2.01 (fixed penalty) | +0.04 | 0.81 | tied |
+| GRB2-SH3 | −3.79 | **−2.58** | −2.57 | −3.21 (scalarization `w`=0.5) | +0.63 | 0.096 | not separated |
+| PSD95-PDZ3 | −2.44 | **−2.20** | −1.15 | −1.82 (Lagrangian) | −0.38 | **0.019** | **the sort wins** |
+
+Two baselines, both deterministic. *Rank once* sorts the measured singles and
+adds while the constraint holds. *Forward* re-scores every candidate addition
+on the true oracle at each step — stronger in principle, but one pass costs a
+full sweep of the library, so on these domains it runs out of budget before it
+can use its advantage. Each rule is tested against whichever of the two did
+better.
 
 **No rule reliably beats the sort on any of the three domains, and on PSD95-PDZ3
 the sort wins outright.** The best rules capture 68–85% of the attainable
@@ -89,15 +96,20 @@ Same engine, same rules, same budget, run instead on the synthetic landscape —
 which carries 24 coupled position pairs, so the objectives are *not* separable:
 
 ```
-at the tightest tau
-  best rule (Lagrangian)          -3.948
-  greedy, additive plan           -2.127   gap +1.82 kcal/mol, p = 0.0042
-  greedy, forward on true oracle  -1.909   gap +2.04 kcal/mol, p = 0.0028
+at the tightest tau, 1200 oracle calls per method
+  best rule (Lagrangian)      -3.948
+  greedy, rank once           -2.127   in   381 calls
+  greedy, forward             -3.062   in  1200 calls
+
+  best rule vs the tougher baseline (forward):
+    gap +0.885 kcal/mol, p = 0.046
 ```
 
-With epistasis present the search wins decisively. Remove it and the
-constrained design problem degenerates into a knapsack that a sort solves
-nearly optimally in four calls.
+With epistasis present the search wins — but only just, and only against the
+stronger baseline by a hair. Against the cheap rank-once sort the margin is
+large; against forward selection on the true oracle it is +0.885 kcal/mol at
+p = 0.046. Read that as *the search is doing something here and nothing on
+the measured track*, not as a comfortable win.
 
 ### What this invalidates, and what survives
 
@@ -119,7 +131,8 @@ it replicates on the synthetic track where the search does bind.
 **The generalizable part.** Additive ΔΔG models and per-residue predictors are
 common oracles in multi-objective protein design, and a separable oracle makes
 the design problem an integer program with no structure for a search to
-exploit. A greedy baseline costs four oracle calls and detects this. Run one
+exploit. A greedy baseline costs one pass over the single mutants plus a
+handful of compositions, and detects this. Run one
 before reporting a method comparison.
 
 ```
@@ -479,17 +492,32 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 159 tests, no data or network needed
+pytest                                    # 170 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
+
+# Track 2, the headline. Every --budget below is the value recorded in the
+# matching results/*_meta.json, so these commands reproduce the committed
+# files byte for byte. Where no flag appears the default (1200) is what was
+# used.
 for d in GB1 GRB2-SH3 PSD95-PDZ3; do
-  python experiments/tau_sweep.py --landscape additive --domain $d
+  python experiments/tau_sweep.py    --landscape additive --domain $d
+  python experiments/tuning_cost.py  --landscape additive --domain $d --budget 800
 done
+
+# Track 1, zero oracle error. The measured library is only a few hundred
+# singles, so the budget has to be small enough that a run can actually spend
+# it -- check_budget_binds fails loudly otherwise.
+for d in GB1 GRB2-SH3 PSD95-PDZ3; do
+  python experiments/tau_sweep.py --landscape exact --domain $d --budget 120
+done
+
+python experiments/tau_sweep.py --landscape synthetic
 python experiments/replication.py         # cross-domain figure and significance tests
-python experiments/baselines.py --track additive    # greedy baseline + exact optimum
+python experiments/baselines.py --track additive    # baselines + exact optimum
 python experiments/baselines.py --track synthetic   # the same check, with epistasis
-python experiments/tuning_cost.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
+python experiments/budget_curves.py --landscape synthetic --budget 600
 python experiments/report.py              # regenerates the tables above
 ```
 

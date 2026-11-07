@@ -11,7 +11,13 @@ import math
 
 import pytest
 
-from cpd.baselines import GreedyResult, exact_optimum, greedy_feasible, pareto_prune
+from cpd.baselines import (
+    GreedyResult,
+    exact_optimum,
+    greedy_feasible,
+    greedy_forward,
+    pareto_prune,
+)
 from cpd.landscape import MeasuredAdditiveLandscape, Measurement, SyntheticLandscape
 from cpd.variants import Variant
 
@@ -195,3 +201,74 @@ def test_greedy_rejects_a_design_whose_additive_plan_did_not_hold():
         assert isinstance(result, GreedyResult)
         if result.measurement is not None:
             assert result.ddg_folding <= tau
+
+
+# --------------------------------------------------------------------------
+# greedy_forward
+# --------------------------------------------------------------------------
+
+
+def test_forward_selection_returns_a_feasible_design():
+    landscape = _landscape()
+    result = greedy_forward(landscape, tau=0.5)
+    assert result.measurement is not None
+    assert result.ddg_folding <= 0.5
+
+
+def test_forward_selection_is_at_least_as_good_as_the_additive_plan_when_additive():
+    """On a separable landscape both greedies see the same truth."""
+    landscape = _landscape()
+    for tau in (2.0, 0.5, 0.0, -0.3):
+        planned = greedy_feasible(landscape, tau=tau)
+        forward = greedy_forward(landscape, tau=tau)
+        if planned.measurement is None:
+            continue
+        assert forward.measurement is not None
+        assert forward.ddg_binding <= planned.ddg_binding + 1e-9
+
+
+def test_forward_selection_costs_more_than_ranking_once():
+    """It pays for the truth at every step; the cost must show that."""
+    landscape = _landscape()
+    planned = greedy_feasible(landscape, tau=10.0)
+    forward = greedy_forward(landscape, tau=10.0)
+    assert forward.n_evaluations > planned.n_evaluations
+
+
+def test_forward_selection_respects_the_order_cap():
+    landscape = _landscape(max_order=3)
+    assert greedy_forward(landscape, tau=10.0, max_order=1).order <= 1
+
+
+def test_forward_selection_stops_when_the_budget_runs_out():
+    landscape = _landscape()
+    result = greedy_forward(landscape, tau=10.0, budget=3)
+    assert result.n_evaluations <= 3
+
+
+def test_forward_selection_finds_nothing_when_nothing_is_feasible():
+    result = greedy_forward(_landscape(), tau=-99.0)
+    assert result.measurement is None
+    assert result.order == 0
+
+
+def test_forward_selection_never_returns_an_infeasible_design_on_a_rugged_landscape():
+    rugged = SyntheticLandscape(
+        n_positions=10, n_interface=3, n_core=3, n_coupled_pairs=16,
+        coupling_scale=1.2, max_order=4, seed=7,
+    )
+    for tau in (-1.0, 0.0, 1.0):
+        result = greedy_forward(rugged, tau=tau, budget=900)
+        if result.measurement is not None:
+            assert result.ddg_folding <= tau
+
+
+def test_forward_selection_only_keeps_a_step_that_improves_binding():
+    landscape = _landscape()
+    result = greedy_forward(landscape, tau=10.0)
+    # Every prefix of the chosen set must be worse than the final design,
+    # otherwise a non-improving step was accepted.
+    chosen = list(result.variant)
+    for k in range(1, len(chosen)):
+        prefix = landscape.evaluate(Variant.of(chosen[:k]))
+        assert result.ddg_binding <= prefix.ddg_binding + 1e-9

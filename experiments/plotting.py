@@ -573,10 +573,12 @@ def replication_grid(
 BASELINE_STYLE = {
     "exact_optimum": {"color": INK_PRIMARY, "linestyle": "-", "linewidth": 1.6},
     "greedy_binding": {"color": INK_SECONDARY, "linestyle": (0, (5, 2)), "linewidth": 1.8},
+    "forward_binding": {"color": INK_SECONDARY, "linestyle": (0, (1, 2)), "linewidth": 1.8},
 }
 BASELINE_NAMES = {
     "exact_optimum": "exact optimum",
-    "greedy_binding": "greedy, no search",
+    "greedy_binding": "greedy, rank once",
+    "forward_binding": "greedy, forward",
 }
 
 
@@ -620,7 +622,7 @@ def baseline_attainment(
             )
 
         anchors = []
-        for key in ("exact_optimum", "greedy_binding"):
+        for key in ("exact_optimum", "greedy_binding", "forward_binding"):
             if cell[key].isna().all():
                 continue
             ax.plot(taus, cell[key], zorder=3, clip_on=False, **BASELINE_STYLE[key])

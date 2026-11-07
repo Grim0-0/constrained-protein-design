@@ -43,7 +43,10 @@ from cpd.search import SearchConfig  # noqa: E402
 from cpd.variants import Variant  # noqa: E402
 
 DEFAULT_SEEDS: tuple[int, ...] = (0, 1, 2, 3, 4)
-DEFAULT_BUDGET = 1500
+#: Oracle calls per method. This is the number every committed result in
+#: results/ was produced with, so the commands in the README reproduce
+#: them without passing --budget. Changing it invalidates those files.
+DEFAULT_BUDGET = 1200
 DEFAULT_N_RETURN = 20
 DEFAULT_K = 10
 

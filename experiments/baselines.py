@@ -38,12 +38,13 @@ import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from cpd.baselines import exact_optimum, greedy_feasible  # noqa: E402
+from cpd.baselines import exact_optimum, greedy_feasible, greedy_forward  # noqa: E402
 from cpd.landscape import MeasuredAdditiveLandscape  # noqa: E402
 from cpd.metrics import compare_to_constant  # noqa: E402
 
 from experiments import plotting  # noqa: E402
 from experiments.common import (  # noqa: E402
+    DEFAULT_BUDGET,
     FIGURES_DIR,
     RESULTS_DIR,
     build_landscape,
@@ -90,9 +91,13 @@ def evaluate(track: str, domain: str | None) -> pd.DataFrame:
     if isinstance(landscape, MeasuredAdditiveLandscape):
         optima = exact_optimum(landscape, taus)
 
+    budget = int(frame["n_evaluations"].max()) if "n_evaluations" in frame else DEFAULT_BUDGET
     rows = []
     for tau in taus:
         greedy = greedy_feasible(landscape, float(tau))
+        # Forward selection gets the same budget the rules got, so the three
+        # numbers in a row are all what that many oracle calls can buy.
+        forward = greedy_forward(landscape, float(tau), budget=budget)
         scores = rule_scores(frame, float(tau))
         row = {
             "track": track,
@@ -103,6 +108,10 @@ def evaluate(track: str, domain: str | None) -> pd.DataFrame:
             "greedy_folding": greedy.ddg_folding,
             "greedy_order": greedy.order,
             "greedy_calls": greedy.n_evaluations,
+            "forward_binding": forward.ddg_binding,
+            "forward_folding": forward.ddg_folding,
+            "forward_order": forward.order,
+            "forward_calls": forward.n_evaluations,
         }
         for rule in RULES:
             row[rule] = float(np.nanmean(scores[rule])) if rule in scores else float("nan")
@@ -121,9 +130,16 @@ def verdict(track: str, domain: str | None, table: pd.DataFrame) -> dict:
 
     best_rule = min(scores, key=lambda r: float(np.nanmean(scores[r])))
     best = scores[best_rule]
-    # The baseline is deterministic, so the question is whether the rule's seed
-    # spread reaches past a fixed number -- a one-sample test, not Welch.
-    separation = compare_to_constant(best, float(row.greedy_binding))
+    # Both baselines are deterministic, so the question is whether the rule's
+    # seed spread reaches past a fixed number -- one-sample, not Welch. The
+    # rule has to clear the better of the two to have beaten "no search".
+    baselines = {
+        "rank-once": float(row.greedy_binding),
+        "forward": float(row.forward_binding),
+    }
+    usable = {k: v for k, v in baselines.items() if not np.isnan(v)}
+    toughest = min(usable, key=lambda k: usable[k]) if usable else "rank-once"
+    separation = compare_to_constant(best, baselines[toughest])
     return {
         "track": track,
         "domain": domain or track,
@@ -131,6 +147,9 @@ def verdict(track: str, domain: str | None, table: pd.DataFrame) -> dict:
         "exact_optimum": row.exact_optimum,
         "greedy": row.greedy_binding,
         "greedy_calls": int(row.greedy_calls),
+        "forward": row.forward_binding,
+        "forward_calls": int(row.forward_calls),
+        "toughest_baseline": toughest,
         "best_rule": best_rule,
         "best_rule_mean": float(np.nanmean(best)),
         "gap_to_greedy": separation.gap,
@@ -142,7 +161,8 @@ def verdict(track: str, domain: str | None, table: pd.DataFrame) -> dict:
 
 def print_table(table: pd.DataFrame) -> None:
     has_optimum = not table["exact_optimum"].isna().all()
-    header = f"{'tau':>7} " + (f"{'optimum':>9} " if has_optimum else "") + f"{'greedy':>9} |"
+    header = (f"{'tau':>7} " + (f"{'optimum':>9} " if has_optimum else "")
+              + f"{'rank-once':>10} {'forward':>9} |")
     for rule in RULES:
         header += f" {plotting.DISPLAY_NAMES[rule][:11]:>11}"
     print(header)
@@ -150,7 +170,7 @@ def print_table(table: pd.DataFrame) -> None:
         line = f"{row.tau:>7.3f} "
         if has_optimum:
             line += f"{row.exact_optimum:>9.3f} "
-        line += f"{row.greedy_binding:>9.3f} |"
+        line += f"{row.greedy_binding:>10.3f} {row.forward_binding:>9.3f} |"
         for rule in RULES:
             line += f" {row[rule]:>11.3f}"
         print(line)
@@ -164,7 +184,8 @@ def print_attainment(v: dict, table: pd.DataFrame) -> None:
         return
     print(f"\n  share of the attainable objective captured at tau = {v['tau']:.3f} "
           f"(optimum {optimum:.3f}):")
-    entries = [("greedy (no search)", row.greedy_binding)]
+    entries = [("greedy, rank once", row.greedy_binding),
+               ("greedy, forward", row.forward_binding)]
     entries += [(plotting.DISPLAY_NAMES[r], row[r]) for r in RULES]
     for name, value in sorted(entries, key=lambda e: e[1]):
         if np.isnan(value):
@@ -199,9 +220,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\n{'=' * 78}\n{v['domain']}  ({args.track} track)\n{'=' * 78}")
         print_table(table)
         print_attainment(v, table)
-        print(f"\n  best rule ({plotting.DISPLAY_NAMES[v['best_rule']]}) "
-              f"{v['best_rule_mean']:.3f}  vs  greedy {v['greedy']:.3f} "
-              f"in {v['greedy_calls']} calls")
+        print(f"\n  greedy, rank once   {v['greedy']:>8.3f}  in {v['greedy_calls']} calls")
+        print(f"  greedy, forward     {v['forward']:>8.3f}  in {v['forward_calls']} calls")
+        print(f"  best rule ({plotting.DISPLAY_NAMES[v['best_rule']]}) "
+              f"{v['best_rule_mean']:.3f}, against the tougher of the two "
+              f"({v['toughest_baseline']})")
         print(f"  gap {v['gap_to_greedy']:+.3f} kcal/mol, p = {v['p_value']:.4f} -> ", end="")
         if v["beats_greedy"]:
             print("the search beats the sort")

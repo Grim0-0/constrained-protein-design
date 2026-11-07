@@ -174,6 +174,22 @@ def load_domain(
     raise ValueError(f"unknown track {track!r}; expected 'exact' or 'additive'")
 
 
+def _safe_corr(group: pd.DataFrame, min_n: int = 3) -> float:
+    """Pearson r between the two energies, or NaN when there is too little to say.
+
+    Fewer than three points, or no spread in either column, makes the
+    correlation undefined; pandas returns NaN but warns while dividing by a
+    zero standard deviation, and this project turns warnings into errors. A
+    domain this thin should report NaN rather than a number.
+    """
+    if len(group) < min_n:
+        return float("nan")
+    binding, folding = group["ddg_binding"], group["ddg_folding"]
+    if binding.nunique() < 2 or folding.nunique() < 2:
+        return float("nan")
+    return float(binding.corr(folding))
+
+
 def summarize(frame: pd.DataFrame) -> pd.DataFrame:
     """Per-domain coverage, plus the antagonism this benchmark depends on."""
     rows = []
@@ -186,12 +202,8 @@ def summarize(frame: pd.DataFrame) -> pd.DataFrame:
                 "singles": len(group),
                 "positions": group["position"].nunique(),
                 "interface_singles": len(interface),
-                "corr_all": group["ddg_binding"].corr(group["ddg_folding"]),
-                "corr_interface": (
-                    interface["ddg_binding"].corr(interface["ddg_folding"])
-                    if len(interface) > 2
-                    else float("nan")
-                ),
+                "corr_all": _safe_corr(group),
+                "corr_interface": _safe_corr(interface),
                 "median_binding_se": group["ddg_binding_se"].median(),
                 "median_folding_se": group["ddg_folding_se"].median(),
             }

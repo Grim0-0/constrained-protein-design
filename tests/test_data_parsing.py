@@ -113,3 +113,83 @@ def test_summarize_reports_coverage_and_the_interface_correlation(workbook):
 
 def test_the_three_domains_are_the_ones_the_paper_measured():
     assert DOMAINS == ("GB1", "GRB2-SH3", "PSD95-PDZ3")
+
+
+# --------------------------------------------------------------------------
+# The summary correlations
+# --------------------------------------------------------------------------
+
+
+def test_a_thin_domain_reports_nan_rather_than_a_spurious_correlation():
+    """Two points cannot support a correlation; both columns must say so.
+
+    corr_all used to lack the length guard that corr_interface had two lines
+    below it. Two points always lie on a line, so it reported a perfect +/-1
+    correlation for any domain with two rows, while corr_interface correctly
+    reported NaN for the same data. A fabricated 1.0 is worse than a missing
+    value in a table whose whole subject is folding/binding antagonism.
+    """
+    import math
+
+    import pandas as pd
+
+    from data.download import summarize
+
+    thin = pd.DataFrame(
+        {
+            "domain": ["TINY", "TINY"],
+            "position": [1, 2],
+            "position_class": ["binding_interface", "other"],
+            "ddg_binding": [-1.0, 0.5],
+            "ddg_folding": [0.3, 1.2],
+            "ddg_binding_se": [0.1, 0.1],
+            "ddg_folding_se": [0.1, 0.1],
+        }
+    )
+    row = summarize(thin).iloc[0]
+    assert math.isnan(row["corr_all"])
+    assert math.isnan(row["corr_interface"])
+
+
+def test_a_domain_with_no_spread_reports_nan():
+    """A constant column has no correlation with anything."""
+    import math
+
+    import pandas as pd
+
+    from data.download import summarize
+
+    flat = pd.DataFrame(
+        {
+            "domain": ["FLAT"] * 4,
+            "position": [1, 2, 3, 4],
+            "position_class": ["other"] * 4,
+            "ddg_binding": [-1.0, -1.0, -1.0, -1.0],
+            "ddg_folding": [0.1, 0.4, 0.9, 1.3],
+            "ddg_binding_se": [0.1] * 4,
+            "ddg_folding_se": [0.1] * 4,
+        }
+    )
+    assert math.isnan(summarize(flat).iloc[0]["corr_all"])
+
+
+def test_a_real_sized_domain_still_reports_a_number():
+    import pandas as pd
+
+    from data.download import summarize
+
+    n = 12
+    frame = pd.DataFrame(
+        {
+            "domain": ["REAL"] * n,
+            "position": list(range(n)),
+            "position_class": ["binding_interface"] * n,
+            "ddg_binding": [float(i) * 0.3 - 1.0 for i in range(n)],
+            "ddg_folding": [float(i) * 0.2 + 0.1 for i in range(n)],
+            "ddg_binding_se": [0.1] * n,
+            "ddg_folding_se": [0.1] * n,
+        }
+    )
+    row = summarize(frame).iloc[0]
+    assert row["corr_all"] == pytest.approx(1.0)
+    assert row["corr_interface"] == pytest.approx(1.0)
