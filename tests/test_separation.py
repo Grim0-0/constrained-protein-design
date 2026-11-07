@@ -8,7 +8,7 @@ import math
 
 import pytest
 
-from cpd.metrics import compare_groups, rank_with_ties
+from cpd.metrics import compare_groups, compare_to_constant, rank_with_ties
 
 
 def test_clearly_different_groups_are_separated():
@@ -100,3 +100,55 @@ def test_zero_variance_groups_are_decided_on_their_means():
     assert result.separated
     assert result.p_value == pytest.approx(0.0)
     assert result.gap == pytest.approx(2.0)
+
+
+# --------------------------------------------------------------------------
+# Comparing against a deterministic baseline
+# --------------------------------------------------------------------------
+
+
+def test_a_search_clearly_beating_a_constant_baseline_is_separated():
+    search = [-3.9, -4.1, -3.8, -4.0, -3.95]
+    result = compare_to_constant(search, -2.1)
+    assert result.separated
+    assert result.p_value < 0.01
+    assert result.gap > 0  # the search scored lower, so better
+    assert (result.n_a, result.n_b) == (5, 1)
+
+
+def test_a_search_losing_to_a_constant_baseline_reports_a_negative_gap():
+    search = [-1.80, -1.90, -1.70, -1.85, -1.75]
+    result = compare_to_constant(search, -2.20)
+    assert result.separated
+    assert result.gap < 0  # the baseline is better; the sign must reveal it
+
+
+def test_a_search_straddling_the_baseline_is_not_separated():
+    search = [-2.6, -1.8, -2.9, -1.9, -2.4]
+    assert not compare_to_constant(search, -2.3).separated
+
+
+@pytest.mark.filterwarnings("ignore:Precision loss")
+def test_one_sample_matches_welch_against_the_replicated_constant():
+    """The clearer spelling must not change the answer."""
+    search = [-3.21, -2.60, -3.90, -2.95, -3.40]
+    constant = -2.579
+    one = compare_to_constant(search, constant)
+    welch = compare_groups(search, [constant] * len(search))
+    assert one.p_value == pytest.approx(welch.p_value, rel=1e-9)
+    assert one.gap == pytest.approx(welch.gap)
+
+
+def test_a_constant_search_is_decided_on_equality():
+    assert not compare_to_constant([-2.0] * 4, -2.0).separated
+    assert compare_to_constant([-2.0] * 4, -1.0).separated
+
+
+def test_too_few_seeds_refuses_to_decide_against_a_constant():
+    result = compare_to_constant([-3.0], -2.0)
+    assert not result.separated
+    assert math.isnan(result.p_value)
+
+    nan_baseline = compare_to_constant([-3.0, -3.1, -2.9], float("nan"))
+    assert not nan_baseline.separated
+    assert math.isnan(nan_baseline.p_value)

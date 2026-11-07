@@ -11,6 +11,7 @@ figures/*.pdf
 !figures/tuning_cost_additive_GRB2-SH3.png
 !figures/budget_curves_additive_GRB2-SH3.png
 !figures/replication_additive.png
+!figures/baselines_additive.png
 
 # Python
 __pycache__/

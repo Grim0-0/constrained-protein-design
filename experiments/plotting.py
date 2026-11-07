@@ -566,3 +566,102 @@ def replication_grid(
     fig.savefig(path, dpi=170)
     plt.close(fig)
     return path
+
+
+#: Baselines are drawn as ink, never as a coloured series. They are the
+#: reference the coloured series are measured against, not peers of them.
+BASELINE_STYLE = {
+    "exact_optimum": {"color": INK_PRIMARY, "linestyle": "-", "linewidth": 1.6},
+    "greedy_binding": {"color": INK_SECONDARY, "linestyle": (0, (5, 2)), "linewidth": 1.8},
+}
+BASELINE_NAMES = {
+    "exact_optimum": "exact optimum",
+    "greedy_binding": "greedy, no search",
+}
+
+
+def baseline_attainment(
+    table: pd.DataFrame,
+    verdict: pd.DataFrame,
+    path: Path,
+    methods=("lagrangian", "fixed_penalty", "scalarization_w0.5",
+             "scalarization_sweep", "optimize_then_reject"),
+    subtitle: str = "",
+) -> Path:
+    """Every rule against a search-free sort, and against the true optimum.
+
+    The question the figure answers is not which rule wins. It is whether any
+    of them beats the dashed line, which cost four oracle calls after the
+    singles and has no hyperparameter. Where the coloured series sit on or
+    below that line, the ranking among them is not evidence about constraint
+    handling.
+
+    Baselines are ink, series are colour, and the gap between the solid ink
+    line and everything else is the share of the attainable objective that no
+    method captured.
+    """
+    apply_style()
+    domains = [d for d in DOMAIN_ORDER if d in set(table["domain"])]
+    domains += [d for d in dict.fromkeys(table["domain"]) if d not in domains]
+    fig, axes = plt.subplots(1, len(domains), figsize=(4.6 * len(domains), 4.6))
+    axes = np.atleast_1d(axes)
+
+    for ax, domain in zip(axes, domains):
+        cell = table[table["domain"] == domain].sort_values("tau", ascending=False)
+        taus = cell["tau"].to_numpy()
+
+        for method in methods:
+            if method not in cell or cell[method].isna().all():
+                continue
+            ax.plot(
+                taus, cell[method], color=SERIES_COLORS[method],
+                linewidth=LINE_WIDTH, marker="o", markersize=MARKER_SIZE - 1.5,
+                zorder=2, clip_on=False,
+            )
+
+        anchors = []
+        for key in ("exact_optimum", "greedy_binding"):
+            if cell[key].isna().all():
+                continue
+            ax.plot(taus, cell[key], zorder=3, clip_on=False, **BASELINE_STYLE[key])
+            anchors.append((
+                (float(taus[-1]), float(cell[key].iloc[-1])),
+                BASELINE_NAMES[key],
+                BASELINE_STYLE[key]["color"],
+            ))
+        _place_labels(ax, anchors)
+
+        # Shade below the optimum: that region is unattainable, not merely
+        # unreached. Done after the series so the axis limits are final --
+        # reading them earlier shades the wrong side of the line.
+        if not cell["exact_optimum"].isna().all():
+            floor = ax.get_ylim()[0]
+            ax.fill_between(
+                taus, cell["exact_optimum"], floor,
+                color=INK_PRIMARY, alpha=0.05, linewidth=0, zorder=0,
+            )
+            ax.set_ylim(bottom=floor)
+
+        row = verdict[verdict["domain"] == domain]
+        title = domain
+        if not row.empty and not bool(row.iloc[0]["beats_greedy"]):
+            title = f"{domain}   — search does not beat the sort"
+        ax.set_title(title, loc="left", pad=8, fontsize=11)
+
+        _tau_axis(ax, taus, right_pad=0.32)
+        ax.set_xlabel("constraint tightness  tau")
+        _style_axes(ax)
+
+    axes[0].set_ylabel("best feasible binding  ddG\nlower is better")
+    _legend(fig, methods)
+    note = ("shaded band is unattainable: no design satisfies the constraint and binds "
+            "that tightly")
+    if subtitle:
+        note = f"{note}\n{subtitle}"
+    fig.text(0.008, 0.012, note, fontsize=8, color=INK_MUTED, ha="left", va="bottom")
+
+    fig.tight_layout(rect=(0, 0.1, 1, 0.9))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=170)
+    plt.close(fig)
+    return path

@@ -18,6 +18,11 @@ constrained optimization and essentially absent from multi-objective protein
 design. See [relation to prior work](#relation-to-prior-work) for what that
 does and does not claim.
 
+> **Read ["is the problem hard?"](#before-any-of-that-is-the-problem-hard) first.**
+> A search-free greedy baseline is not beaten by any rule on the measured
+> track, and beats them all on one domain. That track therefore cannot rank
+> the rules on design quality, and the section says what survives.
+
 ---
 
 ## The headline
@@ -41,6 +46,86 @@ The two panels disagree, and that is the point. Optimize-then-reject reports
 100% feasibility because it discards failures — while filling only a fifth of
 the designs it was asked for. The scalarization sweep returns a full set of
 twenty designs of which **none** satisfy the constraint.
+
+---
+
+## Before any of that: is the problem hard?
+
+A comparison between search methods is only evidence about search if a method
+that does not search would do worse. So: rank the measured singles by binding,
+add substitutions one at a time while the constraint still holds, stop at the
+order cap. No population, no stochasticity, no hyperparameter. Four oracle
+calls after the singles are measured.
+
+Because both objectives on Track 2 are **sums of per-substitution constants**,
+the constrained problem is also solvable exactly — by dynamic programming over
+the Pareto front of (folding, binding), which is lossless here precisely
+because the objectives are separable. So every score below can be stated as a
+fraction of what was actually attainable, not just relative to the other rules.
+
+![Every rule against a search-free sort and against the exact optimum](figures/baselines_additive.png)
+
+At the tightest constraint, best of 5 seeds per rule, one-sample *t* against the
+deterministic baseline:
+
+| domain | exact optimum | greedy, no search | best rule | gap | *p* | verdict |
+|---|---|---|---|---|---|---|
+| GB1 | −2.47 | **−1.97** | −2.01 (fixed penalty) | +0.04 | 0.81 | tied |
+| GRB2-SH3 | −3.79 | **−2.58** | −3.21 (scalarization `w`=0.5) | +0.63 | 0.096 | not separated |
+| PSD95-PDZ3 | −2.44 | **−2.20** | −1.82 (Lagrangian) | −0.38 | **0.019** | **the sort wins** |
+
+**No rule reliably beats the sort on any of the three domains, and on PSD95-PDZ3
+the sort wins outright.** The best rules capture 68–85% of the attainable
+objective; the sort captures 68–90%. On GB1 the sort hits the exact optimum at
+five of seven constraint levels while every evolutionary rule falls short.
+
+The gaps between rules that this benchmark was built to measure are 0.03–0.26
+kcal/mol. The gap from the best rule to optimal is 0.47–1.21 kcal/mol. **The
+shortfall is an order of magnitude larger than the signal.**
+
+### The cause is the oracle, not the rules
+
+Same engine, same rules, same budget, run instead on the synthetic landscape —
+which carries 24 coupled position pairs, so the objectives are *not* separable:
+
+```
+at the tightest tau
+  best rule (Lagrangian)          -3.948
+  greedy, additive plan           -2.127   gap +1.82 kcal/mol, p = 0.0042
+  greedy, forward on true oracle  -1.909   gap +2.04 kcal/mol, p = 0.0028
+```
+
+With epistasis present the search wins decisively. Remove it and the
+constrained design problem degenerates into a knapsack that a sort solves
+nearly optimally in four calls.
+
+### What this invalidates, and what survives
+
+**Invalidated.** Track 2 cannot rank constraint-handling rules on design
+quality. Any such ranking — including ones earlier versions of this README
+reported — is measuring a search that is not the binding factor. The Track 2
+design-quality numbers are retained below as a record, not as a result.
+
+**Survives.** The failure modes are about *feasibility and yield*, not about
+reaching the optimum, and the baseline does not touch them: optimize-then-reject
+still spends 5% of its budget on feasible designs and still fills a fifth of the
+set, still in proportion to measured conflict strength; the weight sweep still
+returns twenty designs of which none are feasible; hypervolume over all designs
+still reports improvement where no usable design exists. The
+[hyperparameter-robustness result](#3-the-lagrangian-does-not-beat-a-well-chosen-weight--it-beats-having-to-choose)
+is a spread across knob settings rather than a ranking against a baseline, and
+it replicates on the synthetic track where the search does bind.
+
+**The generalizable part.** Additive ΔΔG models and per-residue predictors are
+common oracles in multi-objective protein design, and a separable oracle makes
+the design problem an integer program with no structure for a search to
+exploit. A greedy baseline costs four oracle calls and detects this. Run one
+before reporting a method comparison.
+
+```
+python experiments/baselines.py --track additive
+python experiments/baselines.py --track synthetic
+```
 
 ---
 
@@ -394,13 +479,15 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 116 tests, no data or network needed
+pytest                                    # 159 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
 for d in GB1 GRB2-SH3 PSD95-PDZ3; do
   python experiments/tau_sweep.py --landscape additive --domain $d
 done
 python experiments/replication.py         # cross-domain figure and significance tests
+python experiments/baselines.py --track additive    # greedy baseline + exact optimum
+python experiments/baselines.py --track synthetic   # the same check, with epistasis
 python experiments/tuning_cost.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
 python experiments/report.py              # regenerates the tables above
@@ -414,7 +501,8 @@ src/cpd/
   variants.py    Mutation, Variant            landscape.py   the three oracles + budget accounting
   objectives.py  the four rules               search.py      the one shared engine
   methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
-experiments/     tau_sweep, replication, tuning_cost, budget_curves, report, plotting
+  baselines.py   greedy + exact optimum
+experiments/     tau_sweep, replication, baselines, tuning_cost, budget_curves, report, plotting
 data/download.py fetches and parses the ddPCA supplementary tables
 ```
 
@@ -425,6 +513,15 @@ how you get it.
 
 ## Limitations
 
+- **The measured track cannot rank the rules on design quality.** A
+  search-free sort ties or beats every rule on all three domains, so the
+  search is not the binding factor there. Established by
+  [`baselines.py`](experiments/baselines.py) and stated up front rather
+  than buried here. The rankings that survive are on the synthetic track,
+  where the same baseline loses by about 2 kcal/mol.
+- **No method gets close to optimal.** Where the optimum is computable the
+  best rules capture 68-85% of it. Nothing here is evidence that any of
+  these rules searches well in absolute terms.
 - **Three domains is still three.** All three ddPCA domains are swept, which is
   enough to show the effect tracks conflict strength but not enough to fit that
   relationship. Three points define a direction, not a curve.

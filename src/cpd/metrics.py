@@ -41,6 +41,7 @@ __all__ = [
     "summarize",
     "SeparationResult",
     "compare_groups",
+    "compare_to_constant",
     "rank_with_ties",
 ]
 
@@ -314,6 +315,50 @@ def compare_groups(
         p_value=p,
         n_a=int(x.size),
         n_b=int(y.size),
+        separated=bool(p < alpha),
+        alpha=alpha,
+    )
+
+
+def compare_to_constant(
+    values: Sequence[float], constant: float, alpha: float = 0.05
+) -> SeparationResult:
+    """Does a stochastic method's score reach past a deterministic baseline?
+
+    A search-free baseline returns the same number every time, so there is no
+    spread to pool and the right test is one-sample against that constant.
+    Welch against the constant repeated ``n`` times is algebraically the same
+    test -- the second variance term vanishes and the Welch-Satterthwaite
+    degrees of freedom collapse to ``n - 1`` -- but spelling it this way says
+    what is being asked and keeps scipy from warning about a zero-variance
+    group.
+
+    ``gap`` keeps the same meaning as in :func:`compare_groups`: positive means
+    ``values`` scored lower, which for a minimized objective means better.
+    """
+    from scipy import stats
+
+    x = np.asarray([v for v in values if not np.isnan(v)], dtype=float)
+    if x.size < 2 or np.isnan(constant):
+        return SeparationResult(
+            float(np.mean(x)) if x.size else float("nan"),
+            float(constant), float("nan"), float("nan"),
+            int(x.size), 1, False, alpha,
+        )
+    if np.ptp(x) == 0.0:
+        identical = float(x[0]) == float(constant)
+        return SeparationResult(
+            float(np.mean(x)), float(constant), float(constant - np.mean(x)),
+            1.0 if identical else 0.0, int(x.size), 1, not identical, alpha,
+        )
+    p = float(stats.ttest_1samp(x, popmean=float(constant)).pvalue)
+    return SeparationResult(
+        mean_a=float(np.mean(x)),
+        mean_b=float(constant),
+        gap=float(constant - np.mean(x)),
+        p_value=p,
+        n_a=int(x.size),
+        n_b=1,
         separated=bool(p < alpha),
         alpha=alpha,
     )
