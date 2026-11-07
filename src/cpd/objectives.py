@@ -10,6 +10,24 @@ A rule may be stateful. :meth:`Objective.update` is called once per generation
 with that generation's measurements, which is how the Lagrangian multiplier
 adapts. Scores are never cached by the engine, so a rule whose state changes
 re-ranks the whole population on the next comparison.
+
+Every rule scores two things: what you *want* (the target, on binding) and
+what you must *not break* (the constraint, on folding). Only the first varies
+between the two regimes this benchmark compares:
+
+``Minimize``
+    Drive binding as low as it will go. This is how the benchmark started and
+    how most multi-objective design work frames affinity.
+``Window``
+    Land binding inside ``[lo, hi]``. Overshooting costs as much as
+    undershooting, which is closer to what affinity engineering actually
+    targets -- binding too tight carries its own liabilities.
+
+The distinction matters for more than realism. Under ``Minimize`` on an
+additive oracle the problem is a knapsack and a sort nearly solves it; see
+:mod:`cpd.baselines`. Under ``Window`` the same oracle poses a subset-sum
+problem, which greedy handles badly. Which of those a benchmark is really
+measuring is the thing this repo is about.
 """
 
 from __future__ import annotations
@@ -20,12 +38,89 @@ from typing import Sequence
 from .landscape import Measurement
 
 __all__ = [
+    "Target",
+    "Minimize",
+    "Window",
     "Objective",
     "Scalarized",
     "FixedPenalty",
     "Lagrangian",
     "BindingOnly",
 ]
+
+
+class Target:
+    """What the search is trying to achieve on ``ddg_binding``.
+
+    Separated from the constraint handling so the two can be varied
+    independently: every rule below works under either target, which is what
+    makes "unbounded versus window" a clean experimental comparison rather
+    than a different benchmark.
+    """
+
+    #: Identifier used in result tables and filenames.
+    name: str = "target"
+
+    def cost(self, measurement: Measurement) -> float:
+        """Non-negative-or-signed scalar to minimize. Lower is better."""
+        raise NotImplementedError
+
+    def achieved(self, measurement: Measurement) -> bool:
+        """True when this design has hit the target, where that is meaningful."""
+        raise NotImplementedError
+
+
+@dataclass
+class Minimize(Target):
+    """Push binding as low as possible. The original, unbounded objective.
+
+    ``achieved`` is always True: there is no bar to clear, only a direction to
+    go, which is exactly the property that makes the problem easy on a
+    separable oracle.
+    """
+
+    name: str = "minimize"
+
+    def cost(self, measurement: Measurement) -> float:
+        return measurement.ddg_binding
+
+    def achieved(self, measurement: Measurement) -> bool:
+        return True
+
+
+@dataclass
+class Window(Target):
+    """Land binding inside ``[lo, hi]``; overshooting costs as much as missing.
+
+    ``cost`` is the two-sided hinge -- the distance from the interval, and zero
+    inside it::
+
+        cost = max(lo - b, 0) + max(b - hi, 0)
+
+    Because the cost is flat inside the window, every design that lands in it
+    ties. That is deliberate: the question a window asks is *did you hit it*,
+    not *how far past the near edge did you go*. Ranking within the window
+    would quietly restore the unbounded objective.
+    """
+
+    lo: float
+    hi: float
+    name: str = "window"
+
+    def __post_init__(self) -> None:
+        if self.lo > self.hi:
+            raise ValueError(f"window lo must not exceed hi, got [{self.lo}, {self.hi}]")
+        self.name = f"window[{self.lo:g},{self.hi:g}]"
+
+    def cost(self, measurement: Measurement) -> float:
+        return self.distance(measurement.ddg_binding)
+
+    def distance(self, binding: float) -> float:
+        """Distance from ``binding`` to the window; 0 inside it."""
+        return max(self.lo - binding, 0.0) + max(binding - self.hi, 0.0)
+
+    def achieved(self, measurement: Measurement) -> bool:
+        return self.lo <= measurement.ddg_binding <= self.hi
 
 
 class Objective:
@@ -62,6 +157,7 @@ class Scalarized(Objective):
     """
 
     weight: float = 0.5
+    target: Target = field(default_factory=Minimize)
 
     def __post_init__(self) -> None:
         if not 0.0 <= self.weight <= 1.0:
@@ -69,7 +165,10 @@ class Scalarized(Objective):
         self.name = f"scalarized_w{self.weight:g}"
 
     def score(self, measurement: Measurement) -> float:
-        return self.weight * measurement.ddg_binding + (1.0 - self.weight) * measurement.ddg_folding
+        return (
+            self.weight * self.target.cost(measurement)
+            + (1.0 - self.weight) * measurement.ddg_folding
+        )
 
     def state(self) -> dict[str, float]:
         return {"weight": self.weight}
@@ -89,6 +188,7 @@ class FixedPenalty(Objective):
 
     tau: float
     rho: float = 10.0
+    target: Target = field(default_factory=Minimize)
 
     def __post_init__(self) -> None:
         if self.rho < 0.0:
@@ -96,7 +196,7 @@ class FixedPenalty(Objective):
         self.name = f"penalty_rho{self.rho:g}"
 
     def score(self, measurement: Measurement) -> float:
-        return measurement.ddg_binding + self.rho * measurement.violation(self.tau)
+        return self.target.cost(measurement) + self.rho * measurement.violation(self.tau)
 
     def state(self) -> dict[str, float]:
         return {"rho": self.rho}
@@ -130,6 +230,7 @@ class Lagrangian(Objective):
     lam: float = 1.0
     lam_max: float = 100.0
     name: str = "lagrangian"
+    target: Target = field(default_factory=Minimize)
     history: list[float] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
@@ -142,7 +243,7 @@ class Lagrangian(Objective):
         self.history = [self.lam]
 
     def score(self, measurement: Measurement) -> float:
-        return measurement.ddg_binding + self.lam * (measurement.ddg_folding - self.tau)
+        return self.target.cost(measurement) + self.lam * (measurement.ddg_folding - self.tau)
 
     def update(self, batch: Sequence[Measurement]) -> None:
         if not batch:
@@ -167,6 +268,7 @@ class BindingOnly(Objective):
     """
 
     name: str = "binding_only"
+    target: Target = field(default_factory=Minimize)
 
     def score(self, measurement: Measurement) -> float:
-        return measurement.ddg_binding
+        return self.target.cost(measurement)

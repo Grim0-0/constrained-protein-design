@@ -244,3 +244,91 @@ def test_the_record_is_sorted_and_diffable():
         "reported_numbers.json is not in canonical form; "
         "re-run experiments/reported.py"
     )
+
+
+# --------------------------------------------------------------------------
+# The two-regime window table
+# --------------------------------------------------------------------------
+
+WINDOW_HEADER = "| domain | window | widened | regime | best rule | greedy | gap | *p* | verdict |"
+
+
+def _window_table(readme: str) -> dict[tuple[str, str], list[str]]:
+    """Rows of the window table, keyed by (domain, regime).
+
+    The table repeats the domain only on its first row, so the domain carries
+    down until the next one names itself.
+    """
+    lines = readme.splitlines()
+    start = lines.index(WINDOW_HEADER)
+    rows: dict[tuple[str, str], list[str]] = {}
+    domain = ""
+    for body in lines[start + 2:]:
+        if not body.startswith("|"):
+            break
+        cells = [c.strip() for c in body.strip().strip("|").split("|")]
+        if cells[0]:
+            domain = cells[0]
+        regime = cells[3].replace("**", "").strip()
+        rows[(domain, regime)] = cells
+    return rows
+
+
+def test_the_window_table_lists_every_domain_in_the_record(readme, record):
+    rows = _window_table(readme)
+    for domain in record["windows"]:
+        for regime in ("unbounded", "window"):
+            assert (domain, regime) in rows, f"{domain}/{regime} missing from the window table"
+
+
+@pytest.mark.parametrize("domain", ["GB1", "GRB2-SH3", "PSD95-PDZ3", "synthetic"])
+def test_the_window_table_matches_the_record(readme, record, domain):
+    stored = record["windows"][domain]
+    rows = _window_table(readme)
+
+    # The window bounds and the widening count, stated once per domain.
+    first = rows[(domain, "unbounded")]
+    bounds = re.findall(r"[-+]?\d+\.\d+", first[1].replace(MINUS, "-"))
+    assert len(bounds) == 2, f"{domain}: could not read the window bounds"
+    assert float(bounds[0]) == pytest.approx(stored["window_lo"], abs=TOLERANCE)
+    assert float(bounds[1]) == pytest.approx(stored["window_hi"], abs=TOLERANCE)
+    assert first[2].rstrip("x×") == str(stored["widenings"])
+
+    for regime, key in (("unbounded", "minimize"), ("window", "window")):
+        cells = rows[(domain, regime)]
+        want = stored[key]
+        for index, name in ((4, "best_rule_cost"), (5, "greedy_cost"), (6, "gap"), (7, "p_value")):
+            got = _number(cells[index])
+            assert got is not None, f"{domain}/{regime}: no number in the {name} cell"
+            assert abs(got - want[name]) <= TOLERANCE, (
+                f"{domain}/{regime} {name}: README says {got}, record says {want[name]}"
+            )
+
+
+def test_the_window_verdicts_match_the_significance_results(readme, record):
+    rows = _window_table(readme)
+    for domain, stored in record["windows"].items():
+        for regime, key in (("unbounded", "minimize"), ("window", "window")):
+            verdict = rows[(domain, regime)][-1].replace("**", "").lower()
+            if stored[key]["beats_greedy"]:
+                assert "search wins" in verdict, (
+                    f"{domain}/{regime}: the search separates "
+                    f"(p = {stored[key]['p_value']}) but the README says {verdict!r}"
+                )
+            else:
+                assert "search wins" not in verdict, (
+                    f"{domain}/{regime}: not separated "
+                    f"(p = {stored[key]['p_value']}) but the README claims a win"
+                )
+
+
+def test_the_headline_window_claim_counts_only_the_domains_that_support_it(readme, record):
+    """The synthetic row does not separate; the prose must not sweep it in."""
+    wins = [d for d, v in record["windows"].items() if v["window"]["beats_greedy"]]
+    assert set(wins) == {"GB1", "GRB2-SH3", "PSD95-PDZ3"}, (
+        f"which domains the window rescues has changed: {sorted(wins)}; "
+        "the README claim 'all three measured domains' needs revisiting"
+    )
+    flat = " ".join(readme.split())
+    assert "On all three measured domains the finding flips" in flat
+    assert "The synthetic track does not reproduce it" in flat

@@ -83,3 +83,99 @@ def test_binding_only_is_the_binding_energy():
     assert objective.score(Measurement(-2.0, 99.0)) == pytest.approx(-2.0)
     objective.update([Measurement(0.0, 99.0)])
     assert objective.score(Measurement(-2.0, 99.0)) == pytest.approx(-2.0)
+
+
+# --------------------------------------------------------------------------
+# Targets: unbounded versus a window
+# --------------------------------------------------------------------------
+
+
+def test_minimize_is_the_binding_value_and_is_always_achieved():
+    from cpd.objectives import Minimize
+
+    target = Minimize()
+    assert target.cost(Measurement(-2.5, 0.1)) == pytest.approx(-2.5)
+    assert target.achieved(Measurement(5.0, 0.1)) is True
+
+
+def test_a_window_costs_nothing_inside_and_the_distance_outside():
+    from cpd.objectives import Window
+
+    window = Window(-3.0, -2.0)
+    assert window.distance(-2.5) == pytest.approx(0.0)
+    assert window.distance(-3.0) == pytest.approx(0.0)
+    assert window.distance(-2.0) == pytest.approx(0.0)
+    assert window.distance(-4.0) == pytest.approx(1.0)  # overshoot
+    assert window.distance(-1.0) == pytest.approx(1.0)  # undershoot
+
+
+def test_overshooting_a_window_costs_as_much_as_undershooting():
+    """The property that makes this a different problem, not a harder one."""
+    from cpd.objectives import Window
+
+    window = Window(-3.0, -2.0)
+    assert window.distance(-3.7) == pytest.approx(window.distance(-1.3))
+
+
+def test_a_window_is_flat_inside_so_every_hit_ties():
+    """Ranking within the window would quietly restore the unbounded objective."""
+    from cpd.objectives import Window
+
+    window = Window(-3.0, -2.0)
+    costs = [window.cost(Measurement(b, 0.0)) for b in (-2.9, -2.5, -2.1)]
+    assert costs == [0.0, 0.0, 0.0]
+
+
+def test_a_window_knows_whether_it_was_hit():
+    from cpd.objectives import Window
+
+    window = Window(-3.0, -2.0)
+    assert window.achieved(Measurement(-2.5, 0.1))
+    assert not window.achieved(Measurement(-4.0, 0.1))
+    assert not window.achieved(Measurement(-1.0, 0.1))
+
+
+def test_an_inverted_window_is_rejected():
+    from cpd.objectives import Window
+
+    with pytest.raises(ValueError, match="lo must not exceed hi"):
+        Window(-1.0, -2.0)
+
+
+@pytest.mark.parametrize("rule_name", ["scalarized", "penalty", "lagrangian", "binding_only"])
+def test_every_rule_scores_through_its_target(rule_name):
+    """Swapping the target must change every rule, or the regime is not controlled."""
+    from cpd.objectives import (
+        BindingOnly,
+        FixedPenalty,
+        Lagrangian,
+        Minimize,
+        Scalarized,
+        Window,
+    )
+
+    window = Window(-1.1, -0.9)
+    builders = {
+        "scalarized": (lambda t: Scalarized(weight=1.0, target=t)),
+        "penalty": (lambda t: FixedPenalty(tau=1.0, rho=10.0, target=t)),
+        "lagrangian": (lambda t: Lagrangian(tau=1.0, target=t)),
+        "binding_only": (lambda t: BindingOnly(target=t)),
+    }
+    build = builders[rule_name]
+    inside = Measurement(-1.0, 0.0)
+    overshoot = Measurement(-3.0, 0.0)
+
+    unbounded = build(Minimize())
+    windowed = build(window)
+
+    # Unbounded prefers the stronger binder; the window prefers the one inside.
+    assert unbounded.score(overshoot) < unbounded.score(inside)
+    assert windowed.score(inside) < windowed.score(overshoot)
+
+
+def test_the_default_target_leaves_existing_behaviour_unchanged():
+    from cpd.objectives import Lagrangian
+
+    rule = Lagrangian(tau=0.5)
+    m = Measurement(-2.0, 1.0)
+    assert rule.score(m) == pytest.approx(-2.0 + rule.lam * (1.0 - 0.5))

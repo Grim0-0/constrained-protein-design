@@ -24,7 +24,9 @@ See :mod:`experiments.baselines` for the comparison these are used in.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import TYPE_CHECKING, Callable, Sequence
+
+import numpy as np
 
 from .landscape import (
     BudgetedOracle,
@@ -39,9 +41,14 @@ __all__ = [
     "GreedyResult",
     "greedy_feasible",
     "greedy_forward",
+    "greedy_window",
     "exact_optimum",
+    "exact_optimum_window",
     "pareto_prune",
 ]
+
+if TYPE_CHECKING:  # pragma: no cover - import only for the annotation
+    from .objectives import Window
 
 
 @dataclass(frozen=True)
@@ -259,4 +266,177 @@ def exact_optimum(
     for tau in taus:
         feasible = [b for f, b in pooled if f <= tau]
         out[float(tau)] = min(feasible) if feasible else float("nan")
+    return out
+
+
+# --------------------------------------------------------------------------
+# The window regime
+# --------------------------------------------------------------------------
+
+
+def greedy_window(
+    landscape: Landscape,
+    window: "Window",
+    tau: float,
+    max_order: int | None = None,
+    budget: int | None = None,
+) -> GreedyResult:
+    """Forward selection toward a target window, scored on the true oracle.
+
+    The rule: at each step score every legal single addition, discard the ones
+    that break the folding constraint, and keep whichever brings cumulative
+    binding closest to the window. Stop on entering the window, when no
+    addition gets closer, at the order cap, or when the budget runs out.
+
+    This is the fair window-aware baseline, not a handicapped one. Ranking
+    singles by binding -- which is what :func:`greedy_feasible` does and what
+    nearly solves the unbounded problem -- is meaningless against a window,
+    because overshooting costs as much as undershooting. Giving greedy that
+    rule here and then reporting that it fails would be a straw man. This
+    version gets the best myopic rule available: full knowledge of the true
+    objective at every step. If it still fails, the failure is structural.
+
+    And it should be expected to: hitting a cumulative sum inside a range is
+    subset-sum, where the locally closest step routinely rules out the
+    combination that would have landed inside.
+    """
+    max_order = landscape.max_order if max_order is None else max_order
+    if max_order < 1:
+        raise ValueError(f"max_order must be at least 1, got {max_order}")
+    oracle = BudgetedOracle(landscape, budget=budget)
+
+    chosen: list[Mutation] = []
+    used: set[int] = set()
+    best: Measurement | None = None
+    best_distance = float("inf")
+
+    while len(chosen) < max_order:
+        candidate: tuple[Mutation, Measurement, int, float] | None = None
+        exhausted = False
+        for position in landscape.positions:
+            if position in used:
+                continue
+            for mutation in landscape.candidate_mutations(position):
+                trial = Variant.of(chosen + [mutation])
+                if not landscape.contains(trial):
+                    continue
+                try:
+                    m = oracle(trial)
+                except BudgetExhausted:
+                    exhausted = True
+                    break
+                if m.ddg_folding > tau:
+                    continue
+                distance = window.distance(m.ddg_binding)
+                if distance >= best_distance:
+                    continue
+                if candidate is None or distance < candidate[3]:
+                    candidate = (mutation, m, position, distance)
+            if exhausted:
+                break
+        if candidate is None:
+            break
+        chosen.append(candidate[0])
+        used.add(candidate[2])
+        best, best_distance = candidate[1], candidate[3]
+        if best_distance <= 0.0 or exhausted:
+            break
+
+    if best is None:
+        return GreedyResult(Variant(), None, oracle.n_unique, 0)
+    return GreedyResult(Variant.of(chosen), best, oracle.n_unique, len(chosen))
+
+
+def _shift(row: np.ndarray, offset: int) -> np.ndarray:
+    """Move ``row`` right by ``offset`` bins, filling vacated bins with inf."""
+    out = np.full_like(row, np.inf)
+    n = row.size
+    if offset == 0:
+        out[:] = row
+    elif 0 < offset < n:
+        out[offset:] = row[: n - offset]
+    elif -n < offset < 0:
+        out[: n + offset] = row[-offset:]
+    return out
+
+
+def exact_optimum_window(
+    landscape: MeasuredAdditiveLandscape,
+    window: "Window",
+    taus: Sequence[float],
+    max_order: int | None = None,
+    bin_width: float = 0.01,
+) -> dict[float, float]:
+    """Smallest achievable distance to ``window`` subject to ``folding <= tau``.
+
+    **The Pareto argument used by :func:`exact_optimum` does not hold here.**
+    That one prunes any point another dominates in both objectives, which is
+    lossless only because lower binding is always better. Against a window a
+    point with *higher* binding can be the one that lands inside, so pruning
+    it can discard the optimum outright. Reusing that dynamic program here
+    would silently report a worse answer than the true one.
+
+    So this is a different algorithm: discretize cumulative binding into bins
+    and store, for each ``(k, bin)``, the minimum cumulative folding reachable
+    with exactly ``k`` substitutions. Processing one position at a time keeps
+    "at most one substitution per position" exact, and the ``k`` index keeps
+    the order cap exact. A tau query scans the bins whose minimum folding
+    clears it and takes the smallest distance to the window.
+
+    **Discretization error.** Each step's binding effect is snapped to a
+    multiple of ``bin_width``, so a design of order ``k`` can be misplaced by
+    at most ``k * bin_width / 2``. At the default 0.01 kcal/mol and an order
+    cap of 4 that is 0.02 kcal/mol -- an order of magnitude below the gaps
+    this benchmark reports, and it is the reason the default is not coarser.
+    Pass a smaller ``bin_width`` to shrink it at quadratic cost in memory.
+    """
+    if not isinstance(landscape, MeasuredAdditiveLandscape):
+        raise TypeError(
+            "exact_optimum_window is only valid for an additive landscape, where "
+            f"both objectives are sums of per-substitution constants. Got "
+            f"{type(landscape).__name__}, which is not separable."
+        )
+    max_order = landscape.max_order if max_order is None else max_order
+    if max_order < 1:
+        raise ValueError(f"max_order must be at least 1, got {max_order}")
+    if bin_width <= 0.0:
+        raise ValueError(f"bin_width must be positive, got {bin_width}")
+
+    options: list[list[tuple[float, float]]] = []
+    for position in landscape.positions:
+        per_position = []
+        for mutation in landscape.candidate_mutations(position):
+            m = landscape.evaluate(Variant((mutation,)))
+            per_position.append((m.ddg_binding, m.ddg_folding))
+        if per_position:
+            options.append(per_position)
+    if not options:
+        raise ValueError("landscape exposes no single mutants")
+
+    every_binding = [b for group in options for b, _ in group]
+    worst_down = sorted(b for b in every_binding if b < 0)[:max_order]
+    worst_up = sorted((b for b in every_binding if b > 0), reverse=True)[:max_order]
+    low = sum(worst_down) - bin_width
+    high = sum(worst_up) + bin_width
+    n_bins = int(np.ceil((high - low) / bin_width)) + 1
+    grid = low + bin_width * np.arange(n_bins)
+
+    #: dp[k, bin] = least cumulative folding using exactly k substitutions
+    dp = np.full((max_order + 1, n_bins), np.inf)
+    dp[0, int(round((0.0 - low) / bin_width))] = 0.0
+
+    for group in options:
+        nxt = dp.copy()
+        for d_binding, d_folding in group:
+            offset = int(round(d_binding / bin_width))
+            for k in range(max_order, 0, -1):
+                nxt[k] = np.minimum(nxt[k], _shift(dp[k - 1], offset) + d_folding)
+        dp = nxt
+
+    distance = np.maximum(window.lo - grid, 0.0) + np.maximum(grid - window.hi, 0.0)
+    reachable = dp.min(axis=0)
+    out: dict[float, float] = {}
+    for tau in taus:
+        feasible = reachable <= tau
+        out[float(tau)] = float(distance[feasible].min()) if feasible.any() else float("nan")
     return out

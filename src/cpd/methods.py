@@ -29,7 +29,15 @@ from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
 from .landscape import BudgetedOracle, Landscape, Measurement
-from .objectives import BindingOnly, FixedPenalty, Lagrangian, Objective, Scalarized
+from .objectives import (
+    BindingOnly,
+    FixedPenalty,
+    Lagrangian,
+    Minimize,
+    Objective,
+    Scalarized,
+    Target,
+)
 from .search import SearchConfig, SearchResult, evolutionary_search
 from .variants import Variant
 
@@ -66,6 +74,9 @@ class DesignRun:
     trace: list[tuple[Variant, Measurement]] = field(default_factory=list, repr=False)
     objective_log: list[dict[str, float]] = field(default_factory=list, repr=False)
     stopped_early: bool = False
+    target: Target = field(default_factory=Minimize)
+    """What the run was aiming at. Ranking inside :meth:`filtered` follows it,
+    so the uniform readout means the same thing under either regime."""
 
     @property
     def n_returned(self) -> int:
@@ -93,7 +104,7 @@ class DesignRun:
         """
         n = self.n_requested if n is None else n
         feasible = [pair for pair in self.trace if pair[1].is_feasible(self.tau)]
-        feasible.sort(key=lambda pair: pair[1].ddg_binding)
+        feasible.sort(key=lambda pair: self.target.cost(pair[1]))
         return [m for _, m in feasible[:n]]
 
 
@@ -108,14 +119,17 @@ def _select_by_objective(
 def _select_by_binding(
     trace: Sequence[tuple[Variant, Measurement]],
     n: int,
+    target: Target,
 ) -> list[tuple[Variant, Measurement]]:
-    return sorted(trace, key=lambda pair: pair[1].ddg_binding)[:n]
+    """Rank by the target, which under ``Minimize`` is binding alone."""
+    return sorted(trace, key=lambda pair: target.cost(pair[1]))[:n]
 
 
 def _select_reject_then_binding(
     trace: Sequence[tuple[Variant, Measurement]],
     tau: float,
     n: int,
+    target: Target,
 ) -> list[tuple[Variant, Measurement]]:
     """Discard everything that breaks the constraint, then take the best binders.
 
@@ -125,7 +139,7 @@ def _select_reject_then_binding(
     make the headline result worthless.
     """
     feasible = [pair for pair in trace if pair[1].is_feasible(tau)]
-    return sorted(feasible, key=lambda pair: pair[1].ddg_binding)[:n]
+    return sorted(feasible, key=lambda pair: target.cost(pair[1]))[:n]
 
 
 def _finish(
@@ -135,6 +149,7 @@ def _finish(
     result: SearchResult,
     oracle: BudgetedOracle,
     n_return: int,
+    target: Target,
 ) -> DesignRun:
     return DesignRun(
         method=name,
@@ -146,6 +161,7 @@ def _finish(
         trace=list(oracle.history),
         objective_log=result.objective_log,
         stopped_early=result.stopped_early,
+        target=target,
     )
 
 
@@ -165,13 +181,15 @@ def run_scalarization(
     weight: float = 0.5,
     n_return: int = 20,
     config: SearchConfig | None = None,
+    target: Target | None = None,
 ) -> DesignRun:
     """Rule 1 at a single fixed weight. ``tau`` is recorded but never used."""
-    objective = Scalarized(weight=weight)
+    target = target or Minimize()
+    objective = Scalarized(weight=weight, target=target)
     oracle = _oracle(landscape, budget)
     result = evolutionary_search(oracle, objective, config)
     selected = _select_by_objective(result.trace, objective, n_return)
-    return _finish(objective.name, tau, selected, result, oracle, n_return)
+    return _finish(objective.name, tau, selected, result, oracle, n_return, target)
 
 
 def run_scalarization_sweep(
@@ -181,6 +199,7 @@ def run_scalarization_sweep(
     weights: Sequence[float] = DEFAULT_WEIGHTS,
     n_return: int = 20,
     config: SearchConfig | None = None,
+    target: Target | None = None,
 ) -> DesignRun:
     """Rule 1 as practitioners run it: sweep the weight, pool, submit the best binders.
 
@@ -200,6 +219,7 @@ def run_scalarization_sweep(
     """
     if not weights:
         raise ValueError("need at least one weight")
+    target = target or Minimize()
     base = config or SearchConfig()
     per_weight = max(1, base.n_generations // len(weights))
     oracle = _oracle(landscape, budget)
@@ -213,7 +233,7 @@ def run_scalarization_sweep(
         sub_config = SearchConfig(
             **{**base.__dict__, "n_generations": per_weight, "seed": base.seed + i}
         )
-        objective = Scalarized(weight=weight)
+        objective = Scalarized(weight=weight, target=target)
         last_result = evolutionary_search(oracle, objective, sub_config)
         merged_log.extend(last_result.objective_log)
         stopped_early = stopped_early or last_result.stopped_early
@@ -222,8 +242,8 @@ def run_scalarization_sweep(
     assert last_result is not None
     last_result.stopped_early = stopped_early
     last_result.objective_log = merged_log
-    selected = _select_by_binding(oracle.history, n_return)
-    return _finish("scalarization_sweep", tau, selected, last_result, oracle, n_return)
+    selected = _select_by_binding(oracle.history, n_return, target)
+    return _finish("scalarization_sweep", tau, selected, last_result, oracle, n_return, target)
 
 
 # --------------------------------------------------------------------------
@@ -238,13 +258,15 @@ def run_fixed_penalty(
     rho: float = 10.0,
     n_return: int = 20,
     config: SearchConfig | None = None,
+    target: Target | None = None,
 ) -> DesignRun:
     """Rule 2. ``rho`` is fixed in advance and never adapts."""
-    objective = FixedPenalty(tau=tau, rho=rho)
+    target = target or Minimize()
+    objective = FixedPenalty(tau=tau, rho=rho, target=target)
     oracle = _oracle(landscape, budget)
     result = evolutionary_search(oracle, objective, config)
     selected = _select_by_objective(result.trace, objective, n_return)
-    return _finish(objective.name, tau, selected, result, oracle, n_return)
+    return _finish(objective.name, tau, selected, result, oracle, n_return, target)
 
 
 # --------------------------------------------------------------------------
@@ -261,13 +283,15 @@ def run_lagrangian(
     lam_max: float = 100.0,
     n_return: int = 20,
     config: SearchConfig | None = None,
+    target: Target | None = None,
 ) -> DesignRun:
     """Rule 3 -- the proposed method."""
-    objective = Lagrangian(tau=tau, lr=lr, lam=lam0, lam_max=lam_max)
+    target = target or Minimize()
+    objective = Lagrangian(tau=tau, lr=lr, lam=lam0, lam_max=lam_max, target=target)
     oracle = _oracle(landscape, budget)
     result = evolutionary_search(oracle, objective, config)
     selected = _select_by_objective(result.trace, objective, n_return)
-    return _finish(objective.name, tau, selected, result, oracle, n_return)
+    return _finish(objective.name, tau, selected, result, oracle, n_return, target)
 
 
 # --------------------------------------------------------------------------
@@ -281,13 +305,15 @@ def run_optimize_then_reject(
     budget: int,
     n_return: int = 20,
     config: SearchConfig | None = None,
+    target: Target | None = None,
 ) -> DesignRun:
-    """Rule 4 -- the null hypothesis. Maximize binding, discard infeasible at the end."""
-    objective = BindingOnly()
+    """Rule 4 -- the null hypothesis. Chase the target, discard infeasible at the end."""
+    target = target or Minimize()
+    objective = BindingOnly(target=target)
     oracle = _oracle(landscape, budget)
     result = evolutionary_search(oracle, objective, config)
-    selected = _select_reject_then_binding(result.trace, tau, n_return)
-    return _finish("optimize_then_reject", tau, selected, result, oracle, n_return)
+    selected = _select_reject_then_binding(result.trace, tau, n_return, target)
+    return _finish("optimize_then_reject", tau, selected, result, oracle, n_return, target)
 
 
 # --------------------------------------------------------------------------
@@ -297,30 +323,40 @@ def run_optimize_then_reject(
 Method = Callable[..., DesignRun]
 
 
-def default_methods(include_weight_sweep: bool = True) -> dict[str, Method]:
+def default_methods(
+    include_weight_sweep: bool = True, target: Target | None = None
+) -> dict[str, Method]:
     """The comparison set: one entry per constraint-handling rule.
 
     Signatures are uniform -- ``(landscape, tau, budget, n_return, config)`` --
     so an experiment can loop over them without special-casing.
+
+    ``target`` sets the regime for every rule at once. It defaults to
+    :class:`~cpd.objectives.Minimize`, so existing callers are unaffected;
+    passing a :class:`~cpd.objectives.Window` runs the identical comparison
+    against a target range instead of an unbounded one. Rule names do not
+    change with the regime -- the regime is recorded as its own column, so the
+    two runs stay directly comparable row by row.
     """
+    target = target or Minimize()
     methods: dict[str, Method] = {
         "scalarization_w0.5": lambda landscape, tau, budget, n_return=20, config=None: (
-            run_scalarization(landscape, tau, budget, 0.5, n_return, config)
+            run_scalarization(landscape, tau, budget, 0.5, n_return, config, target)
         ),
         "fixed_penalty": lambda landscape, tau, budget, n_return=20, config=None: (
-            run_fixed_penalty(landscape, tau, budget, 10.0, n_return, config)
+            run_fixed_penalty(landscape, tau, budget, 10.0, n_return, config, target)
         ),
         "lagrangian": lambda landscape, tau, budget, n_return=20, config=None: (
-            run_lagrangian(landscape, tau, budget, 0.5, 1.0, 100.0, n_return, config)
+            run_lagrangian(landscape, tau, budget, 0.5, 1.0, 100.0, n_return, config, target)
         ),
         "optimize_then_reject": lambda landscape, tau, budget, n_return=20, config=None: (
-            run_optimize_then_reject(landscape, tau, budget, n_return, config)
+            run_optimize_then_reject(landscape, tau, budget, n_return, config, target)
         ),
     }
     if include_weight_sweep:
         methods["scalarization_sweep"] = (
             lambda landscape, tau, budget, n_return=20, config=None: run_scalarization_sweep(
-                landscape, tau, budget, DEFAULT_WEIGHTS, n_return, config
+                landscape, tau, budget, DEFAULT_WEIGHTS, n_return, config, target
             )
         )
     return methods

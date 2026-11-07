@@ -71,5 +71,91 @@
     ],
     "n_designs_returned": 20,
     "n_seeds": 5
+  },
+  "windows": {
+    "GB1": {
+      "minimize": {
+        "beats_greedy": false,
+        "best_rule": "fixed_penalty",
+        "best_rule_cost": -2.006,
+        "gap": 0.035,
+        "greedy_cost": -1.97,
+        "p_value": 0.807
+      },
+      "widenings": 0,
+      "window": {
+        "beats_greedy": true,
+        "best_rule": "fixed_penalty",
+        "best_rule_cost": 0.163,
+        "gap": 1.113,
+        "greedy_cost": 1.276,
+        "p_value": 0.0
+      },
+      "window_hi": -2.092,
+      "window_lo": -2.113
+    },
+    "GRB2-SH3": {
+      "minimize": {
+        "beats_greedy": false,
+        "best_rule": "scalarization_w0.5",
+        "best_rule_cost": -3.206,
+        "gap": 0.627,
+        "greedy_cost": -2.579,
+        "p_value": 0.102
+      },
+      "widenings": 0,
+      "window": {
+        "beats_greedy": true,
+        "best_rule": "fixed_penalty",
+        "best_rule_cost": 0.127,
+        "gap": 0.461,
+        "greedy_cost": 0.588,
+        "p_value": 0.014
+      },
+      "window_hi": -3.163,
+      "window_lo": -3.401
+    },
+    "PSD95-PDZ3": {
+      "minimize": {
+        "beats_greedy": false,
+        "best_rule": "lagrangian",
+        "best_rule_cost": -1.808,
+        "gap": -0.389,
+        "greedy_cost": -2.196,
+        "p_value": 0.054
+      },
+      "widenings": 4,
+      "window": {
+        "beats_greedy": true,
+        "best_rule": "lagrangian",
+        "best_rule_cost": 0.126,
+        "gap": 0.63,
+        "greedy_cost": 0.756,
+        "p_value": 0.001
+      },
+      "window_hi": -1.91,
+      "window_lo": -5.001
+    },
+    "synthetic": {
+      "minimize": {
+        "beats_greedy": true,
+        "best_rule": "lagrangian",
+        "best_rule_cost": -3.871,
+        "gap": 1.744,
+        "greedy_cost": -2.127,
+        "p_value": 0.023
+      },
+      "widenings": 2,
+      "window": {
+        "beats_greedy": false,
+        "best_rule": "lagrangian",
+        "best_rule_cost": 1.11,
+        "gap": 0.768,
+        "greedy_cost": 1.878,
+        "p_value": 0.051
+      },
+      "window_hi": -4.94,
+      "window_lo": -5.74
+    }
   }
 }

@@ -14,8 +14,10 @@ import pytest
 from cpd.baselines import (
     GreedyResult,
     exact_optimum,
+    exact_optimum_window,
     greedy_feasible,
     greedy_forward,
+    greedy_window,
     pareto_prune,
 )
 from cpd.landscape import MeasuredAdditiveLandscape, Measurement, SyntheticLandscape
@@ -272,3 +274,144 @@ def test_forward_selection_only_keeps_a_step_that_improves_binding():
     for k in range(1, len(chosen)):
         prefix = landscape.evaluate(Variant.of(chosen[:k]))
         assert result.ddg_binding <= prefix.ddg_binding + 1e-9
+
+
+# --------------------------------------------------------------------------
+# The window regime
+# --------------------------------------------------------------------------
+
+
+def _brute_force_window(landscape, window, tau, max_order):
+    """Every legal variant, scored directly. The reference the binned DP must match."""
+    by_position = {p: list(landscape.candidate_mutations(p)) for p in landscape.positions}
+    positions = list(by_position)
+    best = float("nan")
+    for order in range(0, max_order + 1):
+        for chosen_positions in itertools.combinations(positions, order):
+            for combo in itertools.product(*[by_position[p] for p in chosen_positions]):
+                variant = Variant.of(combo)
+                if not landscape.contains(variant):
+                    continue
+                m = landscape.evaluate(variant)
+                if m.ddg_folding > tau:
+                    continue
+                d = window.distance(m.ddg_binding)
+                if math.isnan(best) or d < best:
+                    best = d
+    return best
+
+
+@pytest.mark.parametrize("window_bounds", [(-1.6, -1.2), (-0.9, -0.5), (-3.0, -2.0), (0.0, 0.4)])
+@pytest.mark.parametrize("tau", [3.0, 1.0, 0.0, -0.4])
+def test_the_binned_dp_matches_brute_force(window_bounds, tau):
+    from cpd.objectives import Window
+
+    max_order, bin_width = 3, 0.001
+    landscape = _landscape(max_order=max_order)
+    window = Window(*window_bounds)
+    got = exact_optimum_window(
+        landscape, window, [tau], max_order=max_order, bin_width=bin_width
+    )[tau]
+    want = _brute_force_window(landscape, window, tau, max_order)
+    if math.isnan(want):
+        assert math.isnan(got)
+    else:
+        # Each step snaps to a bin, so error is bounded by k * bin_width / 2.
+        assert got == pytest.approx(want, abs=max_order * bin_width)
+
+
+def test_pareto_pruning_would_give_the_wrong_answer_for_a_window():
+    """Why the window case needs its own algorithm, demonstrated rather than asserted.
+
+    The unbounded DP keeps only points minimizing both objectives. Against a
+    window the optimum can be a point that pruning discards, because a higher
+    binding value may be the one that lands inside the target range.
+    """
+    from cpd.objectives import Window
+
+    # E24R binds -0.2; E24K binds -1.0 and dominates it on binding alone,
+    # so Pareto pruning on (folding, binding) would keep the stronger binder.
+    # A window around -0.2 wants the weaker one.
+    window = Window(-0.3, -0.1)
+    landscape = _landscape(max_order=1)
+    exact = exact_optimum_window(landscape, window, [1.0], max_order=1, bin_width=0.001)[1.0]
+    assert exact == pytest.approx(0.0, abs=0.002), "E24R lands in the window"
+
+    # The dominated point is genuinely dominated in the unbounded sense...
+    kept = pareto_prune([(0.4, -1.0), (-0.1, -0.2)])
+    assert (0.4, -1.0) in kept
+    # ...and the unbounded optimum is a different, much stronger binder.
+    assert exact_optimum(landscape, [1.0], max_order=1)[1.0] == pytest.approx(-1.0)
+
+
+def test_the_binned_dp_refuses_a_landscape_with_epistasis():
+    from cpd.objectives import Window
+
+    rugged = SyntheticLandscape(n_positions=6, n_interface=2, n_core=2, seed=0)
+    with pytest.raises(TypeError, match="separable"):
+        exact_optimum_window(rugged, Window(-1.0, 0.0), [0.0])
+
+
+def test_a_coarser_bin_width_never_beats_the_truth_by_more_than_its_bound():
+    from cpd.objectives import Window
+
+    landscape = _landscape(max_order=3)
+    window, tau = Window(-1.6, -1.2), 1.0
+    truth = _brute_force_window(landscape, window, tau, 3)
+    for bin_width in (0.1, 0.05, 0.01, 0.001):
+        got = exact_optimum_window(
+            landscape, window, [tau], max_order=3, bin_width=bin_width
+        )[tau]
+        assert abs(got - truth) <= 3 * bin_width + 1e-9, f"bin_width={bin_width}"
+
+
+def test_a_bad_bin_width_is_rejected():
+    from cpd.objectives import Window
+
+    with pytest.raises(ValueError, match="bin_width"):
+        exact_optimum_window(_landscape(), Window(-1.0, 0.0), [0.0], bin_width=0.0)
+
+
+def test_greedy_window_returns_a_feasible_design_and_respects_the_cap():
+    from cpd.objectives import Window
+
+    landscape = _landscape(max_order=3)
+    result = greedy_window(landscape, Window(-1.6, -1.2), tau=1.0, max_order=2)
+    assert result.order <= 2
+    if result.measurement is not None:
+        assert result.ddg_folding <= 1.0
+
+
+def test_greedy_window_stops_once_it_is_inside_the_window():
+    from cpd.objectives import Window
+
+    landscape = _landscape(max_order=3)
+    window = Window(-1.1, -0.9)
+    result = greedy_window(landscape, window, tau=2.0)
+    if result.measurement is not None and window.distance(result.ddg_binding) == 0.0:
+        # It must not have kept adding substitutions after landing inside.
+        assert result.order >= 1
+        prefix = Variant.of(list(result.variant)[:-1])
+        if prefix.order:
+            assert window.distance(landscape.evaluate(prefix).ddg_binding) > 0.0
+
+
+def test_greedy_window_finds_nothing_when_the_constraint_forbids_everything():
+    from cpd.objectives import Window
+
+    result = greedy_window(_landscape(), Window(-1.0, 0.0), tau=-99.0)
+    assert result.measurement is None
+    assert result.order == 0
+
+
+def test_greedy_window_never_claims_an_infeasible_design_on_a_rugged_landscape():
+    from cpd.objectives import Window
+
+    rugged = SyntheticLandscape(
+        n_positions=10, n_interface=3, n_core=3, n_coupled_pairs=16,
+        coupling_scale=1.2, max_order=4, seed=11,
+    )
+    for tau in (-0.5, 0.5, 1.5):
+        result = greedy_window(rugged, Window(-3.0, -2.0), tau=tau, budget=900)
+        if result.measurement is not None:
+            assert result.ddg_folding <= tau

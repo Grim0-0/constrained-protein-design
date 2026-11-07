@@ -90,6 +90,29 @@ def _budgets_used() -> list[int]:
     return sorted(budgets)
 
 
+def _window_rows() -> dict:
+    """The two-regime comparison, per domain, from experiments/windows.py."""
+    out: dict = {}
+    for path in sorted(RESULTS_DIR.glob("windows_*_summary.csv")):
+        frame = pd.read_csv(path)
+        for domain, group in frame.groupby("domain"):
+            entry = out.setdefault(str(domain), {})
+            first = group.iloc[0]
+            entry["window_lo"] = round(float(first["window_lo"]), 3)
+            entry["window_hi"] = round(float(first["window_hi"]), 3)
+            entry["widenings"] = int(first["widenings"])
+            for _, row in group.iterrows():
+                entry[str(row["regime"])] = {
+                    "best_rule": str(row["best_rule"]),
+                    "best_rule_cost": round(float(row["best_rule_cost"]), 3),
+                    "greedy_cost": round(float(row["greedy_cost"]), 3),
+                    "gap": round(float(row["gap"]), 3),
+                    "p_value": round(float(row["p_value"]), 3),
+                    "beats_greedy": bool(row["beats_greedy"]),
+                }
+    return out
+
+
 def collect() -> dict:
     """Gather every figure the README quotes, from the committed result files."""
     record: dict = {
@@ -100,6 +123,7 @@ def collect() -> dict:
             "n_designs_returned": DEFAULT_N_RETURN,
         },
         "baselines": {track: _verdict_rows(track) for track in TRACKS},
+        "windows": _window_rows(),
     }
     missing = [t for t, rows in record["baselines"].items() if not rows]
     if missing:

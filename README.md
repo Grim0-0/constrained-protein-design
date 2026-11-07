@@ -18,10 +18,15 @@ constrained optimization and essentially absent from multi-objective protein
 design. See [relation to prior work](#relation-to-prior-work) for what that
 does and does not claim.
 
-> **Read ["is the problem hard?"](#before-any-of-that-is-the-problem-hard) first.**
-> A search-free greedy baseline is not beaten by any rule on the measured
-> track, and beats them all on one domain. That track therefore cannot rank
-> the rules on design quality, and the section says what survives.
+> **Read these two sections first, in order.**
+> [Is the problem hard?](#before-any-of-that-is-the-problem-hard) — a
+> search-free greedy baseline is not beaten by any rule on the measured track,
+> and beats them all on one domain, so that track cannot rank the rules on
+> design quality as posed.
+> [Give the objective a target range](#give-the-objective-a-target-range-and-the-search-advantage-returns)
+> — posed the way affinity engineering actually poses it, as a target window
+> rather than unbounded minimization, the search advantage returns on all
+> three measured domains.
 
 ---
 
@@ -128,6 +133,11 @@ still reports improvement where no usable design exists. The
 is a spread across knob settings rather than a ranking against a baseline, and
 it replicates on the synthetic track where the search does bind.
 
+**Recovered.** Posed as a target window instead of unbounded minimization,
+the same rules on the same oracle beat the same baseline on all three domains.
+See [the next section](#give-the-objective-a-target-range-and-the-search-advantage-returns):
+what is too easy here is the unbounded objective, not constrained design.
+
 **The generalizable part.** Additive ΔΔG models and per-residue predictors are
 common oracles in multi-objective protein design, and a separable oracle makes
 the design problem an integer program with no structure for a search to
@@ -138,6 +148,106 @@ before reporting a method comparison.
 ```
 python experiments/baselines.py --track additive
 python experiments/baselines.py --track synthetic
+```
+
+---
+
+## Give the objective a target range, and the search advantage returns
+
+The result above has an obvious reading: constrained design is just easy, so
+why bother searching. That reading is wrong, and the reason is in the word
+*unbounded*.
+
+Affinity engineering does not usually ask for the tightest binder obtainable.
+It asks for one inside a range — binding too tight carries its own
+liabilities. Minimizing a sum of constants is a knapsack, and ranking the
+terms nearly solves it. Landing a sum *inside an interval* is subset-sum,
+where the locally closest step routinely rules out the combination that would
+have landed inside.
+
+So the identical comparison runs twice, on the same landscape, engine, budget
+and seeds. The only thing that changes is the target:
+
+| | target | cost |
+|---|---|---|
+| unbounded | drive `ddG_binding` down | `ddG_binding` |
+| window | land `ddG_binding` in `[lo, hi]` | `max(lo − b, 0) + max(b − hi, 0)` |
+
+The cost is flat inside the window on purpose. The question a window asks is
+*did you hit it*, not *how far past the near edge did you get*; ranking within
+the window would quietly restore the unbounded objective.
+
+### How the window was chosen
+
+Fixed before any run, from the landscape alone:
+
+- **Centre at twice the strongest single-mutant binding effect.** Out of reach
+  of any one substitution, so the problem is genuinely combinatorial, but
+  inside what three or four measured substitutions can reach.
+- **Half-width at twice the median standard error on binding.** The data's own
+  resolution sets how precisely a target can be meant at all.
+- **Widen by doubling the half-width until the window is reachable**, checked
+  before any search runs — exactly on the additive track, against a
+  first-order surrogate elsewhere. A window nothing can reach is not a hard
+  test, it is a broken one. The number of doublings is reported below, because
+  a window that needed several is a weaker test than one that needed none.
+
+### The greedy baseline is the fair one
+
+Ranking singles by binding is meaningless against a window, so greedy gets the
+best myopic rule available instead: score every legal addition on the **true
+oracle**, discard the ones that break the constraint, keep whichever lands
+closest to the window, stop on entering it. Handing greedy a rule designed to
+fail and then reporting that it failed would prove nothing.
+
+### Result
+
+Tightest τ, 5 seeds, 1200 oracle calls per rule. *Cost* is distance from the
+window, so 0.000 means a design landed inside it.
+
+| domain | window | widened | regime | best rule | greedy | gap | *p* | verdict |
+|---|---|---|---|---|---|---|---|---|
+| GB1 | [−2.11, −2.09] | 0× | unbounded | −2.01 | −1.97 | +0.04 | 0.81 | tied |
+| GB1 | | | **window** | **0.16** | 1.28 | +1.11 | **0.0001** | **search wins** |
+| GRB2-SH3 | [−3.40, −3.16] | 0× | unbounded | −3.21 | −2.58 | +0.63 | 0.10 | not separated |
+| GRB2-SH3 | | | **window** | **0.13** | 0.59 | +0.46 | **0.014** | **search wins** |
+| PSD95-PDZ3 | [−5.00, −1.91] | 4× | unbounded | −1.81 | −2.20 | −0.39 | 0.054 | not separated |
+| PSD95-PDZ3 | | | **window** | **0.13** | 0.76 | +0.63 | **0.001** | **search wins** |
+| synthetic | [−5.74, −4.94] | 2× | unbounded | −3.87 | −2.13 | +1.74 | 0.023 | search wins |
+| synthetic | | | window | 1.11 | 1.88 | +0.77 | 0.051 | not separated |
+
+**On all three measured domains the finding flips.** Unbounded, no rule beats
+a search-free sort. Against a window, every domain separates, at *p* ≤ 0.014.
+The sort never once lands inside the window; the best rule does on all three.
+
+That sharpens the claim rather than retracting it:
+
+> A separable oracle degenerates into a knapsack that a sort nearly solves —
+> but only while the objective is unbounded. Give it a target window, as
+> affinity engineering does, and the search advantage returns on the same
+> oracle, the same engine and the same budget.
+
+### Two things that did not work
+
+**The synthetic track does not reproduce it.** The window regime there is not
+separated (*p* = 0.051) and nothing — search or greedy — lands inside. The
+reachability check is first-order, and on a landscape with 24 coupled pairs a
+first-order model says a window is reachable when the true landscape cannot
+reach it. The same additivity that makes the unbounded problem too easy makes
+a window look closer than it is. That row does not test the hypothesis and is
+not counted as evidence either way.
+
+**PSD95-PDZ3 needed four doublings**, giving a window 3.1 kcal/mol wide,
+because centring at twice the strongest single put the target past anything
+reachable under that τ. A wide window is an easier target for everyone,
+including greedy, so it is the weakest of the three tests — the search still
+separates there at *p* = 0.001, so the conclusion does not rest on it, but the
+window-selection rule has a real flaw: it never consults the constraint. Fixing
+it after seeing the results would be tuning, so it is reported as it ran.
+
+```
+python experiments/windows.py --landscape additive --domain GRB2-SH3
+python experiments/windows.py --landscape synthetic
 ```
 
 ---
@@ -492,7 +602,7 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 181 tests, no data or network needed
+pytest                                    # 223 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
 
@@ -516,6 +626,10 @@ python experiments/tau_sweep.py --landscape synthetic
 python experiments/replication.py         # cross-domain figure and significance tests
 python experiments/baselines.py --track additive    # baselines + exact optimum
 python experiments/baselines.py --track synthetic   # the same check, with epistasis
+for d in GB1 GRB2-SH3 PSD95-PDZ3; do
+  python experiments/windows.py --landscape additive --domain $d   # both regimes
+done
+python experiments/windows.py --landscape synthetic
 python experiments/budget_curves.py --landscape additive --domain GRB2-SH3
 python experiments/budget_curves.py --landscape synthetic --budget 600
 python experiments/report.py              # regenerates the tables above
@@ -535,11 +649,11 @@ runs the whole pipeline on a built-in toy landscape with no download at all.
 ```
 src/cpd/
   variants.py    Mutation, Variant            landscape.py   the three oracles + budget accounting
-  objectives.py  the four rules               search.py      the one shared engine
+  objectives.py  the four rules, two targets  search.py      the one shared engine
   methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
   baselines.py   greedy + exact optimum
-experiments/     tau_sweep, replication, baselines, tuning_cost, budget_curves,
-                 report, reported, plotting
+experiments/     tau_sweep, replication, baselines, windows, tuning_cost,
+                 budget_curves, report, reported, plotting
 data/download.py fetches and parses the ddPCA supplementary tables
 ```
 

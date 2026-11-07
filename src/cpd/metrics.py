@@ -33,6 +33,8 @@ __all__ = [
     "feasibility_rate",
     "feasible_best",
     "feasible_best_k",
+    "best_feasible_cost",
+    "target_hit_rate",
     "ViolationStats",
     "violation_severity",
     "pareto_mask",
@@ -96,6 +98,45 @@ def feasible_best_k(measurements: Sequence[Measurement], tau: float, k: int = 10
     if feasible.size < k:
         return float("nan")
     return float(np.mean(np.sort(feasible)[:k]))
+
+
+def best_feasible_cost(
+    measurements: Sequence[Measurement], tau: float, target
+) -> float:
+    """Lowest target cost among feasible designs; NaN if none are feasible.
+
+    The generalization of :func:`feasible_best` to either regime. Under
+    :class:`~cpd.objectives.Minimize` the target cost *is* ``ddg_binding``, so
+    this returns exactly what ``feasible_best`` does. Under a window it returns
+    the smallest distance from the window, and zero means something landed
+    inside it.
+    """
+    feasible = [m for m in measurements if m.ddg_folding <= tau]
+    if not feasible:
+        return float("nan")
+    return float(min(target.cost(m) for m in feasible))
+
+
+def target_hit_rate(
+    measurements: Sequence[Measurement], tau: float, target
+) -> float:
+    """Fraction of returned designs that are feasible *and* on target.
+
+    Under an unbounded objective every feasible design counts, so this reduces
+    to the feasibility rate. Under a window it is the metric that matters: a
+    design that clears the stability bar but binds ten times tighter than
+    asked for has not hit the target, and nothing in the unbounded metrics
+    would say so.
+
+    NaN for an empty design set, matching :func:`feasibility_rate` -- "no
+    designs" is not the claim "zero percent on target".
+    """
+    if not measurements:
+        return float("nan")
+    hits = sum(
+        1 for m in measurements if m.ddg_folding <= tau and target.achieved(m)
+    )
+    return hits / len(measurements)
 
 
 @dataclass(frozen=True)

@@ -134,3 +134,73 @@ def test_summarize_of_an_empty_design_set_does_not_crash():
     assert report.n_feasible == 0
     assert math.isnan(report.feasible_best)
     assert report.hypervolume_all == pytest.approx(0.0)
+
+
+# --------------------------------------------------------------------------
+# Metrics under a target window
+# --------------------------------------------------------------------------
+
+
+def test_best_feasible_cost_reduces_to_feasible_best_when_unbounded():
+    from cpd.metrics import best_feasible_cost, feasible_best
+    from cpd.objectives import Minimize
+
+    designs = [Measurement(-3.0, 0.1), Measurement(-1.5, 0.2), Measurement(-9.0, 5.0)]
+    assert best_feasible_cost(designs, 1.0, Minimize()) == feasible_best(designs, 1.0)
+
+
+def test_best_feasible_cost_is_zero_when_something_lands_in_the_window():
+    from cpd.metrics import best_feasible_cost
+    from cpd.objectives import Window
+
+    designs = [Measurement(-2.4, 0.1), Measurement(-1.0, 0.2)]
+    assert best_feasible_cost(designs, 1.0, Window(-2.5, -2.0)) == pytest.approx(0.0)
+
+
+def test_best_feasible_cost_ignores_an_infeasible_design_that_hits_the_window():
+    """Hitting the target while breaking the constraint is not a hit."""
+    from cpd.metrics import best_feasible_cost
+    from cpd.objectives import Window
+
+    designs = [Measurement(-2.4, 9.0), Measurement(-1.0, 0.2)]
+    got = best_feasible_cost(designs, 1.0, Window(-2.5, -2.0))
+    assert got == pytest.approx(1.0)
+
+
+def test_best_feasible_cost_is_nan_when_nothing_is_feasible():
+    import math
+
+    from cpd.metrics import best_feasible_cost
+    from cpd.objectives import Window
+
+    assert math.isnan(best_feasible_cost([Measurement(-2.4, 9.0)], 1.0, Window(-2.5, -2.0)))
+
+
+def test_the_hit_rate_counts_only_designs_that_are_feasible_and_on_target():
+    from cpd.metrics import target_hit_rate
+    from cpd.objectives import Window
+
+    designs = [
+        Measurement(-2.4, 0.1),   # feasible and inside  -> counts
+        Measurement(-2.4, 9.0),   # inside but infeasible
+        Measurement(-9.0, 0.1),   # feasible but overshoots
+        Measurement(-1.0, 0.1),   # feasible but undershoots
+    ]
+    assert target_hit_rate(designs, 1.0, Window(-2.5, -2.0)) == pytest.approx(0.25)
+
+
+def test_the_hit_rate_is_the_feasibility_rate_when_unbounded():
+    from cpd.metrics import feasibility_rate, target_hit_rate
+    from cpd.objectives import Minimize
+
+    designs = [Measurement(-3.0, 0.1), Measurement(-1.5, 9.0), Measurement(-2.0, 0.3)]
+    assert target_hit_rate(designs, 1.0, Minimize()) == feasibility_rate(designs, 1.0)
+
+
+def test_the_hit_rate_of_an_empty_set_is_nan():
+    import math
+
+    from cpd.metrics import target_hit_rate
+    from cpd.objectives import Window
+
+    assert math.isnan(target_hit_rate([], 1.0, Window(-2.5, -2.0)))
