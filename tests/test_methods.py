@@ -166,3 +166,46 @@ def test_filtered_readout_can_come_up_short_and_says_so():
 def test_filtered_readout_defaults_to_the_requested_count():
     run = run_scalarization(_landscape(), 5.0, BUDGET, n_return=7, config=CONFIG)
     assert len(run.filtered()) == 7
+
+
+def test_nsga2_returns_the_designs_it_was_asked_for():
+    from cpd.methods import run_nsga2
+
+    landscape = SyntheticLandscape(n_positions=10, n_interface=3, n_core=3, seed=2)
+    run = run_nsga2(landscape, tau=0.0, budget=300, n_return=12)
+    assert run.n_returned == 12
+    assert run.n_evaluations <= 300
+    assert run.method == "nsga2"
+
+
+def test_nsga2_output_does_not_depend_on_tau():
+    """It treats folding as an objective, so the constraint cannot reach it."""
+    from cpd.methods import run_nsga2
+    from cpd.search import SearchConfig
+
+    landscape = SyntheticLandscape(n_positions=10, n_interface=3, n_core=3, seed=2)
+    config = SearchConfig(seed=0, n_generations=8)
+    loose = run_nsga2(landscape, tau=5.0, budget=300, n_return=10, config=config)
+    tight = run_nsga2(landscape, tau=-5.0, budget=300, n_return=10, config=config)
+    assert loose.designs == tight.designs
+
+
+def test_nsga2_is_in_the_default_comparison():
+    from cpd.methods import default_methods
+
+    assert "nsga2" in default_methods()
+
+
+def test_adding_nsga2_left_the_other_rules_alone():
+    """The registry must not perturb the rules that were already in it."""
+    from cpd.methods import default_methods
+    from cpd.search import SearchConfig
+
+    landscape = SyntheticLandscape(n_positions=10, n_interface=3, n_core=3, seed=2)
+    methods = default_methods()
+    config = SearchConfig(seed=0, n_generations=6)
+    first = methods["lagrangian"](landscape, 0.0, 200, 10, config)
+    # Running NSGA-II in between must not disturb the next run's stream.
+    methods["nsga2"](landscape, 0.0, 200, 10, config)
+    second = methods["lagrangian"](landscape, 0.0, 200, 10, config)
+    assert first.designs == second.designs

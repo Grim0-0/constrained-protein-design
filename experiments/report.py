@@ -22,7 +22,7 @@ from experiments.common import RESULTS_DIR
 from experiments.plotting import DISPLAY_NAMES
 
 ORDER = ["lagrangian", "fixed_penalty", "scalarization_w0.5", "scalarization_sweep",
-         "optimize_then_reject"]
+         "optimize_then_reject", "nsga2"]
 
 
 def _fmt(value: float, places: int = 2, percent: bool = False) -> str:

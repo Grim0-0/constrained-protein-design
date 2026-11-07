@@ -179,3 +179,102 @@ def test_the_default_target_leaves_existing_behaviour_unchanged():
     rule = Lagrangian(tau=0.5)
     m = Measurement(-2.0, 1.0)
     assert rule.score(m) == pytest.approx(-2.0 + rule.lam * (1.0 - 0.5))
+
+
+# --------------------------------------------------------------------------
+# NSGA-II
+# --------------------------------------------------------------------------
+
+
+def test_non_dominated_fronts_finds_the_pareto_front_first():
+    from cpd.objectives import non_dominated_fronts
+
+    # (0,0), (1,-1), (2,-2) trade off against each other; (3,3) is dominated by all.
+    points = [(0.0, 0.0), (1.0, -1.0), (2.0, -2.0), (3.0, 3.0), (1.5, -0.5)]
+    fronts = non_dominated_fronts(points)
+    assert sorted(fronts[0]) == [0, 1, 2]
+    assert fronts[-1] == [3]
+
+
+def test_a_dominated_point_lands_in_a_later_front():
+    from cpd.objectives import non_dominated_fronts
+
+    fronts = non_dominated_fronts([(0.0, 0.0), (1.0, 1.0), (2.0, 2.0)])
+    assert fronts == [[0], [1], [2]]
+
+
+def test_identical_points_share_a_front():
+    """Duplicates do not dominate each other, so they cannot be separated."""
+    from cpd.objectives import non_dominated_fronts
+
+    fronts = non_dominated_fronts([(1.0, 1.0)] * 3)
+    assert sorted(fronts[0]) == [0, 1, 2]
+
+
+def test_non_dominated_fronts_of_an_empty_population():
+    from cpd.objectives import non_dominated_fronts
+
+    assert non_dominated_fronts([]) == []
+
+
+def test_crowding_puts_the_boundary_solutions_first():
+    from cpd.objectives import crowding_distances
+
+    points = [(0.0, 3.0), (1.0, 2.0), (2.0, 1.0), (3.0, 0.0)]
+    distance = crowding_distances(points, [0, 1, 2, 3])
+    assert distance[0] == float("inf")
+    assert distance[3] == float("inf")
+    assert distance[1] < float("inf")
+
+
+def test_crowding_prefers_the_sparse_region():
+    from cpd.objectives import crowding_distances
+
+    # index 2 sits in a wide gap; index 1 is crowded against index 0.
+    points = [(0.0, 10.0), (0.1, 9.9), (5.0, 5.0), (10.0, 0.0)]
+    distance = crowding_distances(points, [0, 1, 2, 3])
+    assert distance[2] > distance[1]
+
+
+def test_nsga2_orders_the_front_before_anything_dominated():
+    from cpd.landscape import Measurement
+    from cpd.objectives import NSGA2
+
+    designs = [
+        Measurement(0.0, 0.0),
+        Measurement(1.0, -1.0),
+        Measurement(5.0, 5.0),   # dominated by both of the above
+    ]
+    order = NSGA2().population_order(designs)
+    assert order[-1] == 2
+
+
+def test_nsga2_never_sees_tau():
+    """It treats folding as an objective, which is the framing being tested."""
+    import inspect
+
+    from cpd.objectives import NSGA2
+
+    assert "tau" not in inspect.signature(NSGA2).parameters
+
+
+def test_nsga2_respects_the_target_so_it_works_in_either_regime():
+    from cpd.landscape import Measurement
+    from cpd.objectives import NSGA2, Window
+
+    inside = Measurement(-1.0, 0.0)
+    overshoot = Measurement(-9.0, 0.0)
+    windowed = NSGA2(target=Window(-1.1, -0.9))
+    order = windowed.population_order([overshoot, inside])
+    assert order[0] == 1, "the design inside the window should rank first"
+
+
+def test_only_nsga2_opts_into_population_ranking():
+    """Every other rule must keep the engine's original per-design path."""
+    from cpd.landscape import Measurement
+    from cpd.objectives import BindingOnly, FixedPenalty, Lagrangian, NSGA2, Scalarized
+
+    batch = [Measurement(-1.0, 0.0), Measurement(-2.0, 1.0)]
+    for rule in (Scalarized(), FixedPenalty(tau=0.5), Lagrangian(tau=0.5), BindingOnly()):
+        assert rule.population_order(batch) is None, type(rule).__name__
+    assert NSGA2().population_order(batch) is not None

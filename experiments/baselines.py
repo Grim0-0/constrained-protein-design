@@ -60,6 +60,7 @@ RULES = [
     "scalarization_w0.5",
     "scalarization_sweep",
     "optimize_then_reject",
+    "nsga2",
 ]
 
 

@@ -44,6 +44,8 @@ SERIES_COLORS: dict[str, str] = {
     "fixed_penalty": "#1baf7a",  # slot 3, aqua
     "optimize_then_reject": "#eda100",  # slot 4, yellow
     "scalarization_w0.5": "#e87ba4",  # slot 5, magenta (tables and appendices)
+    "nsga2": "#6a4fb6",  # slot 6, violet -- darker than the blue so the pair
+                         # stays separable for deuteranopes on luminance alone
 }
 
 DISPLAY_NAMES: dict[str, str] = {
@@ -52,14 +54,16 @@ DISPLAY_NAMES: dict[str, str] = {
     "fixed_penalty": "Fixed penalty",
     "optimize_then_reject": "Optimize-then-reject",
     "scalarization_w0.5": "Scalarization (w=0.5)",
+    "nsga2": "NSGA-II",
 }
 
-#: The four constraint-handling rules, in legend order.
+#: The constraint-handling rules, in legend order.
 HEADLINE_METHODS: tuple[str, ...] = (
     "lagrangian",
     "scalarization_sweep",
     "fixed_penalty",
     "optimize_then_reject",
+    "nsga2",
 )
 
 LINE_WIDTH = 2.0

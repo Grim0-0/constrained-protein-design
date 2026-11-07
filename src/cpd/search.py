@@ -13,6 +13,16 @@ revert one to wild type, or change one to a different residue. Moves are
 rejection-sampled against :meth:`~cpd.landscape.Landscape.contains`, so the
 same engine works over a dense synthetic landscape and over the sparse
 measured library of Track 1 without modification.
+
+One rule does not fit "score each design independently": NSGA-II decides
+survival by non-dominated sorting, so whether a variant lives depends on what
+else is in the population. Rather than give it a second engine -- which would
+reintroduce exactly the confound this module exists to avoid -- the engine
+asks every objective for a set-level ordering via
+:meth:`~cpd.objectives.Objective.population_order`. That returns ``None`` for
+every other rule, and the engine then takes its original per-design path
+unchanged. The opt-in is deliberate: results committed before NSGA-II existed
+reproduce byte for byte, which is checked in the tests.
 """
 
 from __future__ import annotations
@@ -83,9 +93,19 @@ def _tournament(
     objective: Objective,
     size: int,
     rng: np.random.Generator,
+    by_position: bool = False,
 ) -> Variant:
+    """Pick the best of ``size`` random candidates.
+
+    ``by_position`` is for rules that rank a population rather than scoring
+    its members, such as NSGA-II. The population is kept best-first, so the
+    lowest sampled index is the winner. Every other rule takes the original
+    score-based path unchanged.
+    """
     k = min(size, len(scored))
     idx = rng.choice(len(scored), size=k, replace=False)
+    if by_position:
+        return scored[int(min(idx))][0]
     best = min((scored[int(i)] for i in idx), key=lambda pair: objective.score(pair[1]))
     return best[0]
 
@@ -151,6 +171,16 @@ def _crossover(
     return Variant.of(chosen)
 
 
+def _rank_population(
+    scored: Sequence[tuple[Variant, Measurement]], objective: Objective
+) -> list[tuple[Variant, Measurement]]:
+    """Reorder best-first using the objective's own set-level ranking."""
+    order = objective.population_order([m for _, m in scored])
+    if order is None:
+        return list(scored)
+    return [scored[i] for i in order]
+
+
 def _propose(
     parents: Sequence[tuple[Variant, Measurement]],
     landscape: Landscape,
@@ -158,12 +188,13 @@ def _propose(
     config: SearchConfig,
     max_order: int,
     rng: np.random.Generator,
+    by_position: bool = False,
 ) -> Variant:
     """Draw one valid offspring, rejection-sampling against the landscape."""
     for _ in range(config.max_resample):
-        parent = _tournament(parents, objective, config.tournament_size, rng)
+        parent = _tournament(parents, objective, config.tournament_size, rng, by_position)
         if len(parents) > 1 and rng.random() < config.crossover_rate:
-            other = _tournament(parents, objective, config.tournament_size, rng)
+            other = _tournament(parents, objective, config.tournament_size, rng, by_position)
             child = _crossover(parent, other, max_order, rng)
         else:
             child = parent
@@ -235,6 +266,12 @@ def evolutionary_search(
         return SearchResult([], list(oracle.history), oracle.n_unique, 0, True, [])
 
     objective.update([m for _, m in population])
+    # A rule that ranks populations rather than scoring designs opts in here.
+    # None means "use score", which is every rule but NSGA-II, so the engine
+    # behaves exactly as before for them.
+    ranks_population = objective.population_order([m for _, m in population]) is not None
+    if ranks_population:
+        population = _rank_population(population, objective)
     objective_log: list[dict[str, float]] = [dict(objective.state())]
 
     # --- generations ----------------------------------------------------
@@ -244,7 +281,9 @@ def evolutionary_search(
             break
         offspring: list[tuple[Variant, Measurement]] = []
         for _ in range(config.n_offspring):
-            child = _propose(population, landscape, objective, config, max_order, rng)
+            child = _propose(
+                population, landscape, objective, config, max_order, rng, ranks_population
+            )
             try:
                 offspring.append((child, oracle(child)))
             except BudgetExhausted:
@@ -259,7 +298,10 @@ def evolutionary_search(
         objective_log.append(dict(objective.state()))
 
         combined = population + offspring
-        combined.sort(key=lambda pair: objective.score(pair[1]))
+        if ranks_population:
+            combined = _rank_population(combined, objective)
+        else:
+            combined.sort(key=lambda pair: objective.score(pair[1]))
         # Deduplicate by variant, keeping the best-ranked copy.
         unique: list[tuple[Variant, Measurement]] = []
         kept: set[Variant] = set()
@@ -269,7 +311,10 @@ def evolutionary_search(
                 unique.append((variant, measurement))
         population = unique[: config.population_size]
 
-    population.sort(key=lambda pair: objective.score(pair[1]))
+    if ranks_population:
+        population = _rank_population(population, objective)
+    else:
+        population.sort(key=lambda pair: objective.score(pair[1]))
     return SearchResult(
         population=[v for v, _ in population],
         trace=list(oracle.history),

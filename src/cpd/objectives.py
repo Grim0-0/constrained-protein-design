@@ -1,4 +1,4 @@
-"""The four constraint-handling rules.
+"""The five constraint-handling rules.
 
 Every rule is a scalar function of a :class:`~cpd.landscape.Measurement` that
 the shared search engine minimizes. Swapping the rule is the *only* difference
@@ -46,6 +46,9 @@ __all__ = [
     "FixedPenalty",
     "Lagrangian",
     "BindingOnly",
+    "NSGA2",
+    "non_dominated_fronts",
+    "crowding_distances",
 ]
 
 
@@ -134,6 +137,20 @@ class Objective:
 
     def update(self, batch: Sequence[Measurement]) -> None:
         """Hook called once per generation. Stateless rules ignore it."""
+        return None
+
+    def population_order(self, measurements: Sequence[Measurement]) -> list[int] | None:
+        """Rank a whole population best-first, for rules that need to.
+
+        Returning ``None`` -- the default -- means this rule scores designs
+        independently and the engine should use :meth:`score`, exactly as it
+        always has. Only a rule whose verdict on one design depends on the
+        others, such as :class:`NSGA2`, overrides this.
+
+        The opt-in matters: it keeps the engine's existing path byte-identical
+        for every rule that does not need the hook, so adding a set-level rule
+        cannot perturb results already committed.
+        """
         return None
 
     def state(self) -> dict[str, float]:
@@ -272,3 +289,133 @@ class BindingOnly(Objective):
 
     def score(self, measurement: Measurement) -> float:
         return self.target.cost(measurement)
+
+
+# --------------------------------------------------------------------------
+# Rule 5 -- NSGA-II
+# --------------------------------------------------------------------------
+
+
+def non_dominated_fronts(points: Sequence[tuple[float, float]]) -> list[list[int]]:
+    """Partition indices into Pareto fronts, best first. Both objectives minimized.
+
+    The textbook fast non-dominated sort. Front 0 is non-dominated by anything,
+    front 1 is non-dominated once front 0 is removed, and so on.
+    """
+    n = len(points)
+    dominated_by: list[list[int]] = [[] for _ in range(n)]
+    domination_count = [0] * n
+    fronts: list[list[int]] = [[]]
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = points[i], points[j]
+            i_dominates = a[0] <= b[0] and a[1] <= b[1] and (a[0] < b[0] or a[1] < b[1])
+            j_dominates = b[0] <= a[0] and b[1] <= a[1] and (b[0] < a[0] or b[1] < a[1])
+            if i_dominates:
+                dominated_by[i].append(j)
+                domination_count[j] += 1
+            elif j_dominates:
+                dominated_by[j].append(i)
+                domination_count[i] += 1
+
+    for i in range(n):
+        if domination_count[i] == 0:
+            fronts[0].append(i)
+
+    current = 0
+    while fronts[current]:
+        nxt: list[int] = []
+        for i in fronts[current]:
+            for j in dominated_by[i]:
+                domination_count[j] -= 1
+                if domination_count[j] == 0:
+                    nxt.append(j)
+        fronts.append(nxt)
+        current += 1
+    return [front for front in fronts if front]
+
+
+def crowding_distances(
+    points: Sequence[tuple[float, float]], front: Sequence[int]
+) -> dict[int, float]:
+    """Crowding distance within one front; boundary solutions get infinity.
+
+    This is NSGA-II's diversity term: it prefers solutions in sparse regions of
+    the front, so the population spreads along the trade-off instead of
+    bunching. Note what it optimizes for -- coverage of the front, including
+    the stretch of it that violates the constraint.
+    """
+    distance = {i: 0.0 for i in front}
+    if len(front) <= 2:
+        return {i: float("inf") for i in front}
+    for axis in (0, 1):
+        ordered = sorted(front, key=lambda i: points[i][axis])
+        low, high = points[ordered[0]][axis], points[ordered[-1]][axis]
+        distance[ordered[0]] = float("inf")
+        distance[ordered[-1]] = float("inf")
+        span = high - low
+        if span <= 0.0:
+            continue
+        for k in range(1, len(ordered) - 1):
+            i = ordered[k]
+            if distance[i] == float("inf"):
+                continue
+            gap = points[ordered[k + 1]][axis] - points[ordered[k - 1]][axis]
+            distance[i] += gap / span
+    return distance
+
+
+@dataclass
+class NSGA2(Objective):
+    """Rule 5 -- non-dominated sorting. What the literature this repo argues with uses.
+
+    Folding is treated as a second **objective**, not a constraint, so like
+    :class:`Scalarized` this rule never sees ``tau``. That is the whole point
+    of including it. The README's argument is about work that frames design as
+    a trade-off and reports hypervolume over the resulting front; NSGA-II is
+    how that framing is usually implemented, and it was missing from the
+    comparison, which meant the claim and the evidence covered different
+    methods.
+
+    It cannot score a design on its own: whether a variant survives depends on
+    what else is in the population. So it ranks the population instead, via
+    :meth:`population_order` -- non-dominated front first, crowding distance
+    within a front. :meth:`score` exists only as a fallback for callers that
+    need some scalar, and returns the dominance rank from the most recent
+    ordering.
+
+    Under a target window the first objective becomes the window cost, so the
+    rule transfers to either regime like the others.
+    """
+
+    target: Target = field(default_factory=Minimize)
+    name: str = "nsga2"
+    _rank: dict[int, int] = field(default_factory=dict, repr=False)
+
+    def _points(self, measurements: Sequence[Measurement]) -> list[tuple[float, float]]:
+        return [(self.target.cost(m), m.ddg_folding) for m in measurements]
+
+    def population_order(self, measurements: Sequence[Measurement]) -> list[int]:
+        """Indices best-first: by front, then by descending crowding distance."""
+        if not measurements:
+            return []
+        points = self._points(measurements)
+        order: list[int] = []
+        for front in non_dominated_fronts(points):
+            distance = crowding_distances(points, front)
+            order.extend(sorted(front, key=lambda i: -distance[i]))
+        self._rank = {index: position for position, index in enumerate(order)}
+        return order
+
+    def score(self, measurement: Measurement) -> float:
+        """Fallback scalar. NSGA-II has no meaningful per-design score.
+
+        Returns the first objective, which makes a lone design comparable to
+        another lone design but is *not* what drives selection. Anything that
+        needs the real ordering must call :meth:`population_order`.
+        """
+        return self.target.cost(measurement)
+
+    def state(self) -> dict[str, float]:
+        return {"front_size": float(sum(1 for r in self._rank.values() if r == 0))}

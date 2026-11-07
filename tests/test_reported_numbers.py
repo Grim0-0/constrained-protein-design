@@ -171,9 +171,23 @@ def _labelled(readme: str, label: str) -> float:
     return float(match.group(1))
 
 
+#: Rule keys as the prose spells them.
+RULE_DISPLAY = {
+    "lagrangian": "Lagrangian",
+    "fixed_penalty": "Fixed penalty",
+    "scalarization_w0.5": "Scalarization (w=0.5)",
+    "scalarization_sweep": "Scalarization",
+    "optimize_then_reject": "Optimize-then-reject",
+    "nsga2": "NSGA-II",
+}
+
+
 def test_the_synthetic_block_matches_the_record(readme, record):
     stored = record["baselines"]["synthetic"]["synthetic"]
-    assert _labelled(readme, "best rule (Lagrangian)") == pytest.approx(
+    # The winning rule is read from the record, not hardcoded, so a change of
+    # winner shows up as a prose mismatch rather than silently passing.
+    label = f"best rule ({RULE_DISPLAY[stored['best_rule']]})"
+    assert _labelled(readme, label) == pytest.approx(
         stored["best_rule_mean"], abs=TOLERANCE
     )
     assert _labelled(readme, "greedy, rank once") == pytest.approx(
@@ -322,16 +336,43 @@ def test_the_window_verdicts_match_the_significance_results(readme, record):
                 )
 
 
-def test_the_headline_window_claim_counts_only_the_domains_that_support_it(readme, record):
-    """The synthetic row does not separate; the prose must not sweep it in."""
-    wins = [d for d, v in record["windows"].items() if v["window"]["beats_greedy"]]
-    assert set(wins) == {"GB1", "GRB2-SH3", "PSD95-PDZ3"}, (
-        f"which domains the window rescues has changed: {sorted(wins)}; "
-        "the README claim 'all three measured domains' needs revisiting"
+MEASURED = ("GB1", "GRB2-SH3", "PSD95-PDZ3")
+
+
+def test_the_window_rescues_exactly_the_domains_the_prose_claims(readme, record):
+    """"Flips" means a specific thing: not separated unbounded, separated windowed."""
+    flipped = [
+        d for d in MEASURED
+        if not record["windows"][d]["minimize"]["beats_greedy"]
+        and record["windows"][d]["window"]["beats_greedy"]
+    ]
+    assert flipped == list(MEASURED), (
+        f"only {flipped} flip from not-separated to a win; the README claims all "
+        "three measured domains do"
     )
     flat = " ".join(readme.split())
     assert "On all three measured domains the finding flips" in flat
-    assert "The synthetic track does not reproduce it" in flat
+
+
+def test_the_synthetic_row_is_described_the_way_it_behaves(readme, record):
+    """It won unbounded too, so it is a confirmation, not a flip, and not a failure."""
+    synthetic = record["windows"]["synthetic"]
+    flat = " ".join(readme.split())
+    if synthetic["minimize"]["beats_greedy"] and synthetic["window"]["beats_greedy"]:
+        assert "wins under the window too" in flat
+        assert "The synthetic track does not reproduce it" not in flat, (
+            "the synthetic track now separates under the window; the old caveat "
+            "must not still be in the README"
+        )
+    else:
+        assert "wins under the window too" not in flat
+
+
+def test_a_withdrawn_caveat_is_withdrawn_in_the_open(readme):
+    """Results that moved under a change get a note, not a silent edit."""
+    flat = " ".join(readme.split())
+    assert "The caveat is withdrawn." in flat
+    assert "An earlier version of this section reported" in flat
 
 
 # --------------------------------------------------------------------------
@@ -345,6 +386,7 @@ DISPLAY_TO_KEY = {
     "Lagrangian": "lagrangian",
     "Scalarization (`w`=0.5)": "scalarization_w0.5",
     "Scalarization (sweep)": "scalarization_sweep",
+    "NSGA-II": "nsga2",
 }
 
 
@@ -421,6 +463,7 @@ DIVERSITY_RULES = {
     "Scalarization (`w`=0.5)": "scalarization_w0.5",
     "Scalarization (sweep)": "scalarization_sweep",
     "Optimize-then-reject": "optimize_then_reject",
+    "NSGA-II": "nsga2",
 }
 
 

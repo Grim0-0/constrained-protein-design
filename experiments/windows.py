@@ -59,7 +59,7 @@ from experiments.common import (  # noqa: E402
 from experiments.plotting import DISPLAY_NAMES  # noqa: E402
 
 RULES = ["lagrangian", "fixed_penalty", "scalarization_w0.5", "scalarization_sweep",
-         "optimize_then_reject"]
+         "optimize_then_reject", "nsga2"]
 
 #: Half-width of the window when the landscape carries no measurement error,
 #: in kcal/mol. Only the synthetic track uses it.

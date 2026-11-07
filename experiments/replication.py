@@ -35,7 +35,7 @@ from experiments.plotting import DOMAIN_ORDER
 
 #: Rules compared across domains, in the order they appear in tables.
 RULES = ["lagrangian", "fixed_penalty", "scalarization_w0.5", "scalarization_sweep",
-         "optimize_then_reject"]
+         "optimize_then_reject", "nsga2"]
 
 
 def conflict_strength(domain: str) -> dict:

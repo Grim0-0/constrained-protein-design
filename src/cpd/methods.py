@@ -30,6 +30,7 @@ from typing import Callable, Sequence
 
 from .landscape import BudgetedOracle, Landscape, Measurement
 from .objectives import (
+    NSGA2,
     BindingOnly,
     FixedPenalty,
     Lagrangian,
@@ -49,6 +50,7 @@ __all__ = [
     "run_fixed_penalty",
     "run_lagrangian",
     "run_optimize_then_reject",
+    "run_nsga2",
     "default_methods",
     "DEFAULT_WEIGHTS",
 ]
@@ -317,6 +319,41 @@ def run_optimize_then_reject(
 
 
 # --------------------------------------------------------------------------
+# Rule 5 -- NSGA-II
+# --------------------------------------------------------------------------
+
+
+def run_nsga2(
+    landscape: Landscape,
+    tau: float,
+    budget: int,
+    n_return: int = 20,
+    config: SearchConfig | None = None,
+    target: Target | None = None,
+) -> DesignRun:
+    """Rule 5 -- non-dominated sorting, the framing this benchmark argues with.
+
+    Folding is a second objective rather than a constraint, so like
+    scalarization this rule never sees ``tau``. Designs are returned by the
+    same crowded-comparison ordering that drove the search: non-dominated
+    front first, then crowding distance.
+
+    That selection is the honest one for this rule. Filtering its output by
+    feasibility would make it a different method -- a constraint-aware one --
+    and would hide the thing worth measuring, which is what a Pareto front
+    hands you when one of its axes is not negotiable.
+    """
+    target = target or Minimize()
+    objective = NSGA2(target=target)
+    oracle = _oracle(landscape, budget)
+    result = evolutionary_search(oracle, objective, config)
+    trace = list(result.trace)
+    order = objective.population_order([m for _, m in trace]) or []
+    selected = [trace[i] for i in order[:n_return]]
+    return _finish("nsga2", tau, selected, result, oracle, n_return, target)
+
+
+# --------------------------------------------------------------------------
 # Registry
 # --------------------------------------------------------------------------
 
@@ -351,6 +388,9 @@ def default_methods(
         ),
         "optimize_then_reject": lambda landscape, tau, budget, n_return=20, config=None: (
             run_optimize_then_reject(landscape, tau, budget, n_return, config, target)
+        ),
+        "nsga2": lambda landscape, tau, budget, n_return=20, config=None: (
+            run_nsga2(landscape, tau, budget, n_return, config, target)
         ),
     }
     if include_weight_sweep:

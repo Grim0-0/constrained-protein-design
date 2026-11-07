@@ -10,7 +10,7 @@ subject to  ddG_folding <= tau    (the protein must stay folded)
 A binder that does not fold is not a different point on the Pareto front. It is
 worthless. But the metric the field reports — hypervolume — pays for it anyway.
 
-This repo benchmarks four constraint-handling rules through a single shared
+This repo benchmarks five constraint-handling rules through a single shared
 search engine, on a landscape built from **experimentally measured** folding and
 binding free energies, and reports **feasibility rate**: the fraction of
 returned designs that actually satisfy the constraint — a metric standard in
@@ -75,9 +75,9 @@ deterministic baseline:
 
 | domain | exact optimum | greedy, rank once | greedy, forward | best rule | gap | *p* | verdict |
 |---|---|---|---|---|---|---|---|
-| GB1 | −2.47 | **−1.97** | −0.82 | −2.01 (fixed penalty) | +0.04 | 0.81 | tied |
+| GB1 | −2.47 | **−1.97** | −0.82 | −2.12 (NSGA-II) | +0.15 | 0.33 | not separated |
 | GRB2-SH3 | −3.79 | **−2.58** | −2.57 | −3.21 (scalarization `w`=0.5) | +0.63 | 0.096 | not separated |
-| PSD95-PDZ3 | −2.44 | **−2.20** | −1.15 | −1.82 (Lagrangian) | −0.38 | **0.019** | **the sort wins** |
+| PSD95-PDZ3 | −2.44 | **−2.20** | −1.15 | −1.94 (NSGA-II) | −0.26 | 0.19 | not separated |
 
 Two baselines, both deterministic. *Rank once* sorts the measured singles and
 adds while the constraint holds. *Forward* re-scores every candidate addition
@@ -86,14 +86,19 @@ full sweep of the library, so on these domains it runs out of budget before it
 can use its advantage. Each rule is tested against whichever of the two did
 better.
 
-**No rule reliably beats the sort on any of the three domains, and on PSD95-PDZ3
-the sort wins outright.** The best rules capture 68–85% of the attainable
-objective; the sort captures 68–90%. On GB1 the sort hits the exact optimum at
-five of seven constraint levels while every evolutionary rule falls short.
+**No rule separates from the sort on any of the three domains.** The best
+rules capture 79–86% of the attainable objective; the sort captures 68–90% and
+is numerically ahead on PSD95-PDZ3. On GB1 the sort hits the exact optimum at
+five of seven constraint levels.
 
-The gaps between rules that this benchmark was built to measure are 0.03–0.26
-kcal/mol. The gap from the best rule to optimal is 0.47–1.21 kcal/mol. **The
-shortfall is an order of magnitude larger than the signal.**
+The gap between the top two rules is 0.03–0.12 kcal/mol. The gap from the best
+rule to optimal is 0.36–0.57. **The shortfall is several times larger than the
+signal the benchmark was built to measure.**
+
+> An earlier version of this section reported that the sort *beat* the search
+> outright on PSD95-PDZ3 (*p* = 0.019). That was before NSGA-II was added to
+> the comparison; it recovers that domain to −1.94 and the difference is no
+> longer significant. The claim is weaker now and stated as it stands.
 
 ### The cause is the oracle, not the rules
 
@@ -102,19 +107,17 @@ which carries 24 coupled position pairs, so the objectives are *not* separable:
 
 ```
 at the tightest tau, 1200 oracle calls per method
-  best rule (Lagrangian)      -3.948
+  best rule (NSGA-II)         -4.311
   greedy, rank once           -2.127   in   381 calls
   greedy, forward             -3.062   in  1200 calls
 
   best rule vs the tougher baseline (forward):
-    gap +0.885 kcal/mol, p = 0.046
+    gap +1.249 kcal/mol, p = 0.0004
 ```
 
-With epistasis present the search wins — but only just, and only against the
-stronger baseline by a hair. Against the cheap rank-once sort the margin is
-large; against forward selection on the true oracle it is +0.885 kcal/mol at
-p = 0.046. Read that as *the search is doing something here and nothing on
-the measured track*, not as a comfortable win.
+With epistasis present the search wins against both baselines, including
+forward selection scored on the true oracle. On the measured track it beats
+neither. Same engine, same rules, same budget — only the oracle differs.
 
 ### What this invalidates, and what survives
 
@@ -207,18 +210,24 @@ window, so 0.000 means a design landed inside it.
 
 | domain | window | widened | regime | best rule | greedy | gap | *p* | verdict |
 |---|---|---|---|---|---|---|---|---|
-| GB1 | [−2.11, −2.09] | 0× | unbounded | −2.01 | −1.97 | +0.04 | 0.81 | tied |
-| GB1 | | | **window** | **0.16** | 1.28 | +1.11 | **0.0001** | **search wins** |
+| GB1 | [−2.11, −2.09] | 0× | unbounded | −2.12 | −1.97 | +0.15 | 0.33 | not separated |
+| GB1 | | | **window** | **0.11** | 1.28 | +1.17 | **0.0002** | **search wins** |
 | GRB2-SH3 | [−3.40, −3.16] | 0× | unbounded | −3.21 | −2.58 | +0.63 | 0.10 | not separated |
 | GRB2-SH3 | | | **window** | **0.13** | 0.59 | +0.46 | **0.014** | **search wins** |
-| PSD95-PDZ3 | [−5.00, −1.91] | 4× | unbounded | −1.81 | −2.20 | −0.39 | 0.054 | not separated |
-| PSD95-PDZ3 | | | **window** | **0.13** | 0.76 | +0.63 | **0.001** | **search wins** |
-| synthetic | [−5.74, −4.94] | 2× | unbounded | −3.87 | −2.13 | +1.74 | 0.023 | search wins |
-| synthetic | | | window | 1.11 | 1.88 | +0.77 | 0.051 | not separated |
+| PSD95-PDZ3 | [−5.00, −1.91] | 4× | unbounded | −1.87 | −2.20 | −0.32 | 0.18 | not separated |
+| PSD95-PDZ3 | | | **window** | **0.10** | 0.76 | +0.66 | **0.0003** | **search wins** |
+| synthetic | [−5.74, −4.94] | 2× | unbounded | −4.31 | −2.13 | +2.19 | **0.0004** | search wins |
+| synthetic | | | **window** | **0.63** | 1.88 | +1.25 | **0.002** | **search wins** |
 
-**On all three measured domains the finding flips.** Unbounded, no rule beats
-a search-free sort. Against a window, every domain separates, at *p* ≤ 0.014.
-The sort never once lands inside the window; the best rule does on all three.
+**On all three measured domains the finding flips.** Unbounded, no rule
+separates from a search-free sort. Against a window, every domain separates,
+at *p* ≤ 0.014. The sort never once lands inside the window; the best rule
+does on every domain, though only on 3–18% of the designs it returns —
+hitting a window is hard for everything, just much harder without a search.
+
+The synthetic track, where the search already won unbounded, wins under the
+window too. So the window never *reverses* a result; it recovers one wherever
+the unbounded framing had flattened it.
 
 That sharpens the claim rather than retracting it:
 
@@ -227,23 +236,21 @@ That sharpens the claim rather than retracting it:
 > affinity engineering does, and the search advantage returns on the same
 > oracle, the same engine and the same budget.
 
-### Two things that did not work
-
-**The synthetic track does not reproduce it.** The window regime there is not
-separated (*p* = 0.051) and nothing — search or greedy — lands inside. The
-reachability check is first-order, and on a landscape with 24 coupled pairs a
-first-order model says a window is reachable when the true landscape cannot
-reach it. The same additivity that makes the unbounded problem too easy makes
-a window look closer than it is. That row does not test the hypothesis and is
-not counted as evidence either way.
+### The weak point in this test
 
 **PSD95-PDZ3 needed four doublings**, giving a window 3.1 kcal/mol wide,
 because centring at twice the strongest single put the target past anything
 reachable under that τ. A wide window is an easier target for everyone,
 including greedy, so it is the weakest of the three tests — the search still
-separates there at *p* = 0.001, so the conclusion does not rest on it, but the
-window-selection rule has a real flaw: it never consults the constraint. Fixing
-it after seeing the results would be tuning, so it is reported as it ran.
+separates there at *p* = 0.0003, so the conclusion does not rest on it, but
+the window-selection rule has a real flaw: **it never consults the
+constraint.** Fixing it after seeing the results would be tuning, so it is
+reported as it ran.
+
+> An earlier version of this section reported that the synthetic track failed
+> to reproduce the effect (*p* = 0.051, nothing landing inside the window).
+> That was before NSGA-II joined the comparison; it closes to 0.63 from the
+> window and separates at *p* = 0.002. The caveat is withdrawn.
 
 ```
 python experiments/windows.py --landscape additive --domain GRB2-SH3
@@ -400,6 +407,7 @@ Tightest τ, 5 seeds, shown as nominal → expected → confident at α = 0.05.
 | Lagrangian | 70% → 71% → 61% | 80% → 80% → 76% | 39% → 38% → 28% |
 | Scalarization (`w`=0.5) | 100% → 100% → **100%** | 94% → 94% → 94% | 100% → 100% → **100%** |
 | Scalarization (sweep) | 25% → 24% → 16% | 0% → 0% → 0% | 2% → 3% → 0% |
+| NSGA-II | 83% → 84% → 81% | 44% → 44% → 42% | 56% → 55% → 53% |
 
 **Optimize-then-reject reports a perfect 100% on all three domains and keeps
 29–47% of it on two of them.** It filters its trace on point estimates, so it
@@ -450,6 +458,7 @@ over, in substituted positions, at the tightest τ:
 | Scalarization (`w`=0.5) | 3.15 | 2.16 | 3.08 |
 | Scalarization (sweep) | 3.73 | — | 1.00 |
 | Optimize-then-reject | 3.27 | **2.17** | 2.67 |
+| NSGA-II | **3.42** | **3.23** | **4.01** |
 
 ### The suspicion held on one domain of three
 
@@ -485,6 +494,36 @@ delivered set.
 ```
 python experiments/diversity.py --domain GRB2-SH3
 ```
+
+---
+
+## What NSGA-II showed
+
+An earlier version of this README criticized the Pareto framing while
+benchmarking only weighted sums and penalties. NSGA-II now runs as a fifth
+rule through the same engine, treating folding as a second objective exactly
+as that literature does, so the claim and the evidence cover the same methods.
+
+It is the strongest searcher here. Unbounded, it is the best rule on GB1,
+PSD95-PDZ3 and the synthetic landscape; under a target window it is best on
+three of four. It also returns by far the most varied designs — 3.42, 3.23 and
+4.01 mean pairwise distance, the highest on every domain — which is what
+crowding distance is for.
+
+And it never sees τ, which is the whole point. Its delivered sets are 83%,
+44% and 56% feasible, against 99–100% for the fixed penalty. So the trade-off
+is explicit rather than rhetorical:
+
+> Non-dominated sorting searches better and spreads wider than any
+> constraint-handling rule here. It also hands back sets that are up to half
+> unusable, because nothing in it knows where the bar is.
+
+That is not an argument against NSGA-II. It is an argument for reporting
+feasibility rate next to hypervolume — the front it finds is a good front, and
+over half of it is in territory you cannot ship. Adding it also moved two
+results that had been reported without it: the sort no longer beats the search
+on PSD95-PDZ3, and the synthetic track now separates under a window. Both are
+noted where they appear.
 
 ---
 
@@ -692,9 +731,18 @@ python experiments/additivity.py
 
 Every rule runs through the **same** evolutionary search engine, with the same
 budget, the same seeds, the same initialization and the same population size.
-Only the scalar objective changes. Comparing a policy-gradient agent against
-NSGA-II would confound the search algorithm with the constraint-handling
-mechanism; this design cannot.
+Only the objective changes. Comparing a policy-gradient agent against NSGA-II
+would confound the search algorithm with the constraint-handling mechanism;
+this design cannot.
+
+NSGA-II is the one rule that does not fit "score each design independently" —
+non-dominated sorting decides survival from the whole population, so whether a
+variant lives depends on what else is in it. Giving it its own engine would
+reintroduce exactly the confound above, so instead the engine asks every rule
+for an optional set-level ordering. Every other rule declines, and the engine
+takes its original per-design path untouched. That is checked rather than
+asserted: results committed before NSGA-II existed reproduce byte for byte,
+and a test fails if adding it ever perturbs another rule.
 
 Three choices worth stating, because each one could have quietly rigged the result:
 
@@ -738,7 +786,13 @@ LIR-CMOP). None of that is new here, and this project claims none of it.
 **The gap is in protein design specifically.** Multi-objective protein design
 work -- LaMBO, EvoMOBO, MP2D, NSGA-II with ProteinMPNN -- frames these problems
 as trade-offs and reports hypervolume and front coverage. Because no
-feasibility threshold is defined, feasibility rate never appears. There are
+feasibility threshold is defined, feasibility rate never appears.
+
+That framing is now *in* the comparison rather than only argued with: NSGA-II
+runs as a fifth rule, through the same engine, treating folding as a second
+objective exactly as this literature does. An earlier version of this README
+criticized the Pareto framing while benchmarking only weighted sums and
+penalties, which meant the claim and the evidence covered different methods. There are
 reasonable causes for that, not an oversight:
 
 - for most design objectives there is no principled threshold; what ddG_folding
@@ -778,7 +832,7 @@ adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ```bash
 pip install -e ".[data,dev]"
-pytest                                    # 268 tests, no data or network needed
+pytest                                    # 288 tests, no data or network needed
 
 python data/download.py                   # fetches the ddPCA tables into data/raw/
 
@@ -835,7 +889,7 @@ runs the whole pipeline on a built-in toy landscape with no download at all.
 ```
 src/cpd/
   variants.py    Mutation, Variant            landscape.py   the three oracles + budget accounting
-  objectives.py  the four rules, two targets  search.py      the one shared engine
+  objectives.py  the five rules, two targets  search.py      the one shared engine
   methods.py     engine x rule, two readouts  metrics.py     feasibility, yield, hypervolume, significance
   baselines.py   greedy + exact optimum
 experiments/     tau_sweep, replication, baselines, windows, uncertainty,
@@ -888,7 +942,7 @@ how you get it.
 - **No wet-lab validation.** None of these designs have been made. This work is
   entirely computational.
 - **One search family.** Conclusions about constraint handling may interact with
-  the evolutionary engine. A second engine running all four rules would test
+  the evolutionary engine. A second engine running all five rules would test
   that; it is not done here.
 - **Hyperparameter ranges are a judgement call.** The spread numbers depend on
   which settings are considered plausible. The ranges used are in

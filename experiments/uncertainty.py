@@ -64,7 +64,7 @@ from experiments.common import (  # noqa: E402
 from experiments.plotting import DISPLAY_NAMES  # noqa: E402
 
 RULES = ["lagrangian", "fixed_penalty", "scalarization_w0.5", "scalarization_sweep",
-         "optimize_then_reject"]
+         "optimize_then_reject", "nsga2"]
 
 #: Risk levels swept, from the nominal test down to a strict one.
 ALPHAS: tuple[float, ...] = (0.5, 0.3, 0.2, 0.1, 0.05, 0.01)
