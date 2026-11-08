@@ -23,10 +23,10 @@ does and does not claim.
 > search-free greedy baseline is not beaten by any rule on the measured track,
 > and beats them all on one domain, so that track cannot rank the rules on
 > design quality as posed.
-> [Give the objective a target range](#give-the-objective-a-target-range-and-the-search-advantage-returns)
+> [Give the objective a target range](#give-the-objective-a-target-range)
 > — posed the way affinity engineering actually poses it, as a target window
-> rather than unbounded minimization, the search advantage returns on all
-> three measured domains.
+> rather than unbounded minimization, the search advantage returns on two of
+> the three measured domains.
 
 ---
 
@@ -43,6 +43,14 @@ Faure, Domingo & Schmiedel et al., *Nature* 2022; multi-mutant values are
 energies for singles only. See [the oracle problem](#the-oracle-problem-and-what-the-published-data-actually-supports)
 below, which is the single biggest caveat on everything here. The same
 comparison on the zero-error Track 1 oracle ranks the rules identically.
+
+Worth knowing before the figure rather than after it: that composition can be
+checked against measured double mutants on five domain-and-assay pairs, and
+**GRB2-SH3 binding is the weakest of the five** — Spearman ρ = 0.672, against
+0.958 for GB1 binding. The domain this headline is drawn on rests on the
+composition the data vouches for least.
+[How far the additive oracle can be trusted](#how-far-the-additive-oracle-can-be-trusted)
+has the numbers.
 
 **Left:** the best design you can actually use, with selection held identical
 across rules. **Right:** how much of what each rule hands over clears the bar.
@@ -136,10 +144,11 @@ still reports improvement where no usable design exists. The
 is a spread across knob settings rather than a ranking against a baseline, and
 it replicates on the synthetic track where the search does bind.
 
-**Recovered.** Posed as a target window instead of unbounded minimization,
-the same rules on the same oracle beat the same baseline on all three domains.
-See [the next section](#give-the-objective-a-target-range-and-the-search-advantage-returns):
-what is too easy here is the unbounded objective, not constrained design.
+**Partly recovered.** Posed as a target window instead of unbounded
+minimization, the same rules on the same oracle beat the same baseline on two
+of the three measured domains; on the third the sort reaches the window too.
+See [the next section](#give-the-objective-a-target-range): part of what is
+too easy here is the unbounded objective, not constrained design.
 
 **The generalizable part.** Additive ΔΔG models and per-residue predictors are
 common oracles in multi-objective protein design, and a separable oracle makes
@@ -155,7 +164,7 @@ python experiments/baselines.py --track synthetic
 
 ---
 
-## Give the objective a target range, and the search advantage returns
+## Give the objective a target range
 
 The result above has an obvious reading: constrained design is just easy, so
 why bother searching. That reading is wrong, and the reason is in the word
@@ -180,20 +189,53 @@ The cost is flat inside the window on purpose. The question a window asks is
 *did you hit it*, not *how far past the near edge did you get*; ranking within
 the window would quietly restore the unbounded objective.
 
-### How the window was chosen
+### How the window is chosen
 
-Fixed before any run, from the landscape alone:
+Fixed before any run, from the landscape and τ alone:
 
-- **Centre at twice the strongest single-mutant binding effect.** Out of reach
-  of any one substitution, so the problem is genuinely combinatorial, but
-  inside what three or four measured substitutions can reach.
+- **Centre at the midpoint between the strongest *feasible* single
+  substitution and the exact constrained optimum.** A target window needs
+  exactly two properties: no single substitution can reach it, so the problem
+  is genuinely combinatorial, and something legal can, so the test is not
+  broken. The strongest feasible single is the near end of the interval where
+  both hold; the constrained optimum — computed exactly by DP, not searched
+  for — is the far end. The midpoint is as far from both failure modes as a
+  target can sit.
 - **Half-width at twice the median standard error on binding.** The data's own
-  resolution sets how precisely a target can be meant at all.
+  resolution sets how precisely a target can be meant at all. A window
+  narrower than the error bars would ask for precision the oracle cannot
+  express. The same rule on every domain, so the widths mean the same thing.
 - **Widen by doubling the half-width until the window is reachable**, checked
-  before any search runs — exactly on the additive track, against a
-  first-order surrogate elsewhere. A window nothing can reach is not a hard
-  test, it is a broken one. The number of doublings is reported below, because
-  a window that needed several is a weaker test than one that needed none.
+  before any search runs. Under this rule nothing ever needed it — **0× on all
+  four tracks**, which is the point of consulting τ when placing the centre.
+
+#### This replaces the rule the first run used, and the replacement is a fix
+
+The original rule centred the window at **twice the strongest single-mutant
+binding effect** and never looked at τ. In a benchmark whose entire subject is
+a constraint, that is wrong on inspection — identifiable by reading the code,
+without running anything. On a domain where the constraint bites early it puts
+the target past everything legal, and the only remedy it has left is to widen
+until the target is broad enough to overlap something reachable:
+
+| domain | old window | width | widened | new window | width | widened |
+|---|---|---|---|---|---|---|
+| GB1 | [−2.113, −2.092] | 0.021 | 0× | [−1.568, −1.547] | 0.021 | 0× |
+| GRB2-SH3 | [−3.401, −3.163] | 0.239 | 0× | [−2.454, −2.216] | 0.239 | 0× |
+| PSD95-PDZ3 | [−5.001, −1.910] | **3.091** | **4×** | [−1.611, −1.418] | 0.193 | 0× |
+| synthetic | [−5.740, −4.940] | 0.800 | 2× | [−2.828, −2.628] | 0.200 | 0× |
+
+Under the old rule PSD95-PDZ3's window came out **147× wider than GB1's**, so
+the three domains were three different experiments rather than one repeated
+three times, and a wide window is an easier target for everyone. Under the new
+rule every width is just that domain's own measurement error, and nothing is
+widened.
+
+Changing a parameter because a result displeased you is tuning. Replacing a
+rule that is wrong when you read it is not, and keeping a known-broken rule is
+not rigour either. Both are in the code — `--rule naive` reproduces the old
+one — and both sets of numbers are in `reported_numbers.json`, so the
+correction is checkable rather than asserted.
 
 ### The greedy baseline is the fair one
 
@@ -208,53 +250,70 @@ fail and then reporting that it failed would prove nothing.
 Tightest τ, 5 seeds, 1200 oracle calls per rule. *Cost* is distance from the
 window, so 0.000 means a design landed inside it.
 
-| domain | window | widened | regime | best rule | greedy | gap | *p* | verdict |
-|---|---|---|---|---|---|---|---|---|
-| GB1 | [−2.11, −2.09] | 0× | unbounded | −2.12 | −1.97 | +0.15 | 0.33 | not separated |
-| GB1 | | | **window** | **0.11** | 1.28 | +1.17 | **0.0002** | **search wins** |
-| GRB2-SH3 | [−3.40, −3.16] | 0× | unbounded | −3.21 | −2.58 | +0.63 | 0.10 | not separated |
-| GRB2-SH3 | | | **window** | **0.13** | 0.59 | +0.46 | **0.014** | **search wins** |
-| PSD95-PDZ3 | [−5.00, −1.91] | 4× | unbounded | −1.87 | −2.20 | −0.32 | 0.18 | not separated |
-| PSD95-PDZ3 | | | **window** | **0.10** | 0.76 | +0.66 | **0.0003** | **search wins** |
-| synthetic | [−5.74, −4.94] | 2× | unbounded | −4.31 | −2.13 | +2.19 | **0.0004** | search wins |
-| synthetic | | | **window** | **0.63** | 1.88 | +1.25 | **0.002** | **search wins** |
+| domain | window | width | widened | regime | best rule | greedy | gap | *p* | verdict |
+|---|---|---|---|---|---|---|---|---|---|
+| GB1 | [−1.57, −1.55] | 0.021 | 0× | unbounded | −2.12 | −1.97 | +0.15 | 0.33 | not separated |
+| GB1 | | | | **window** | **0.00** | 0.73 | +0.73 | **0.0000** | **search wins** |
+| GRB2-SH3 | [−2.45, −2.22] | 0.239 | 0× | unbounded | −3.21 | −2.58 | +0.63 | 0.10 | not separated |
+| GRB2-SH3 | | | | **window** | 0.00 | 0.00 | +0.00 | 1.00 | not separated |
+| PSD95-PDZ3 | [−1.61, −1.42] | 0.193 | 0× | unbounded | −1.87 | −2.20 | −0.32 | 0.18 | not separated |
+| PSD95-PDZ3 | | | | **window** | **0.00** | 0.26 | +0.26 | **0.0000** | **search wins** |
+| synthetic | [−2.83, −2.63] | 0.200 | 0× | unbounded | −4.31 | −2.13 | +2.19 | **0.0000** | search wins |
+| synthetic | | | | **window** | 0.00 | 0.00 | +0.00 | 1.00 | not separated |
 
-**On all three measured domains the finding flips.** Unbounded, no rule
-separates from a search-free sort. Against a window, every domain separates,
-at *p* ≤ 0.014. The sort never once lands inside the window; the best rule
-does on every domain, though only on 3–18% of the designs it returns —
-hitting a window is hard for everything, just much harder without a search.
+**Flips on:** GB1, PSD95-PDZ3. **Does not flip on:** GRB2-SH3.
 
-The synthetic track, where the search already won unbounded, wins under the
-window too. So the window never *reverses* a result; it recovers one wherever
-the unbounded framing had flattened it.
+On GB1 and PSD95-PDZ3 the effect is real and large: unbounded, no rule
+separates from a search-free sort; against a window, both separate at *p* <
+0.001 and the sort never once lands inside. On GRB2-SH3 and the synthetic
+track it is not there at all — greedy forward selection toward the target
+reaches the window too, and every method ties at zero distance.
 
-That sharpens the claim rather than retracting it:
+So a target range is not a universal rescue, and the first version of this
+section said it was. What it is, is a framing under which the search can
+matter on an oracle where unbounded minimization guarantees it cannot.
 
-> A separable oracle degenerates into a knapsack that a sort nearly solves —
-> but only while the objective is unbounded. Give it a target window, as
-> affinity engineering does, and the search advantage returns on the same
-> oracle, the same engine and the same budget.
+### Why two tracks and not the other two
 
-### The weak point in this test
+The table carries a candidate explanation. The centre sits midway between the
+best feasible single and the constrained optimum, so how much room the
+constraint leaves determines how densely the attainable sums pack around the
+target:
 
-**PSD95-PDZ3 needed four doublings**, giving a window 3.1 kcal/mol wide,
-because centring at twice the strongest single put the target past anything
-reachable under that τ. A wide window is an easier target for everyone,
-including greedy, so it is the weakest of the three tests — the search still
-separates there at *p* = 0.0003, so the conclusion does not rest on it, but
-the window-selection rule has a real flaw: **it never consults the
-constraint.** Fixing it after seeing the results would be tuning, so it is
-reported as it ran.
+| domain | best feasible single | constrained optimum | room | greedy reaches the window? |
+|---|---|---|---|---|
+| GB1 | −0.642 | −2.473 | 1.831 | no |
+| PSD95-PDZ3 | −0.587 | −2.442 | 1.855 | no |
+| GRB2-SH3 | −0.883 | −3.787 | 2.904 | **yes** |
+| synthetic | −0.445 | −5.011 | 4.566 | **yes** |
 
-> An earlier version of this section reported that the synthetic track failed
-> to reproduce the effect (*p* = 0.051, nothing landing inside the window).
-> That was before NSGA-II joined the comparison; it closes to 0.63 from the
-> window and separates at *p* = 0.002. The caveat is withdrawn.
+The two tracks where a myopic walk lands inside are the two with the most
+room, and the ordering is clean. **That is four points, and it is not a
+result.** It agrees with the obvious mechanism — subset-sum is hard in the
+worst case, not on a dense instance — but four tracks cannot separate "room"
+from window width, which orders nearly the same way. Settling it needs the
+target swept across the span at fixed width, which this repo has not run.
+
+### What survives
+
+> A separable oracle degenerates into a knapsack that a sort nearly solves.
+> Giving the objective a target range recovers a search advantage on two of
+> the three measured domains, on the same oracle, engine, budget and seeds —
+> and on the other two tracks the sort reaches the window as well. Framing the
+> objective as a range makes the problem hard sometimes, not always.
+
+> **An earlier version of this section** reported that all three measured
+> domains flip, on the window rule that never consulted the constraint. Under
+> the corrected rule GRB2-SH3 does not. That version also recorded the
+> synthetic track as separating under a window once NSGA-II was added (*p* =
+> 0.002), withdrawing an earlier caveat; under the corrected rule it does not
+> separate, so that withdrawal is itself withdrawn. The superseded rule's
+> numbers are the `naive` columns above, and in the record.
 
 ```
 python experiments/windows.py --landscape additive --domain GRB2-SH3
 python experiments/windows.py --landscape synthetic
+python experiments/windows.py --landscape synthetic --rule naive   # superseded
 ```
 
 ---
@@ -345,9 +404,10 @@ domains, spread between the best and worst setting of each rule:
 
 Same ordering every time, on three proteins with different conflict strengths:
 the Lagrangian is least sensitive to its knob, the fixed penalty next, the
-weighted sum between 7× and 17× worse than the Lagrangian. This is the only
-claim in the project that both replicates across domains *and* distinguishes
-the rules — the design-quality rankings do neither.
+weighted sum between 7× and 17× worse than the Lagrangian. **Among the rules
+that take a knob**, this is the only claim in the project that both replicates
+across domains *and* distinguishes them — the design-quality rankings do
+neither. That qualifier is load-bearing, and the next subsection is why.
 
 So the honest claim is narrower and more useful than the one this started with:
 
@@ -355,6 +415,28 @@ So the honest claim is narrower and more useful than the one this started with:
 > perfectly tuned weighted sum. It buys near-indifference to a hyperparameter
 > that cannot be tuned before the run, and it never ships a design set that is
 > 0% feasible.
+
+#### NSGA-II does not need the indifference, and pays for it elsewhere
+
+That claim is scoped to rules that have a knob, and the scope is not a
+technicality. [NSGA-II](#what-nsga-ii-showed) has no weight, no penalty
+coefficient and no learning rate — it ranks by dominance and crowding
+distance, so there is nothing to set wrong — and it is the strongest searcher
+in this repo besides. *Use the Lagrangian because it tolerates a badly chosen
+knob* is no answer to *use NSGA-II and choose nothing*.
+
+What it costs is in the same results. Its delivered sets are 44–83% feasible
+against 97–100% for the fixed penalty, because nothing in it knows where τ
+is. So the two are not ranked against each other; they are priced:
+
+> Among rules that take a hyperparameter, the Lagrangian is the one you can
+> set wrong most cheaply. NSGA-II avoids the problem by construction and pays
+> for it in yield — 56% unusable at worst. The choice
+> is between a knob you have to guess and a yield you have to accept.
+
+That is this repo's thesis demonstrated by a method rather than argued at
+one: whatever you do not tell the search about the constraint, you pay for
+downstream.
 
 ### Where the budget goes
 
@@ -506,24 +588,26 @@ as that literature does, so the claim and the evidence cover the same methods.
 
 It is the strongest searcher here. Unbounded, it is the best rule on GB1,
 PSD95-PDZ3 and the synthetic landscape; under a target window it is best on
-three of four. It also returns by far the most varied designs — 3.42, 3.23 and
+GB1 and ties at zero distance on PSD95-PDZ3 and the synthetic track. It also
+returns by far the most varied designs — 3.42, 3.23 and
 4.01 mean pairwise distance, the highest on every domain — which is what
 crowding distance is for.
 
 And it never sees τ, which is the whole point. Its delivered sets are 83%,
-44% and 56% feasible, against 99–100% for the fixed penalty. So the trade-off
+44% and 56% feasible, against 97–100% for the fixed penalty. So the trade-off
 is explicit rather than rhetorical:
 
 > Non-dominated sorting searches better and spreads wider than any
-> constraint-handling rule here. It also hands back sets that are up to half
-> unusable, because nothing in it knows where the bar is.
+> constraint-handling rule here. It also hands back sets that are
+> 56% unusable at worst, because nothing in it knows where the bar is.
 
 That is not an argument against NSGA-II. It is an argument for reporting
 feasibility rate next to hypervolume — the front it finds is a good front, and
-over half of it is in territory you cannot ship. Adding it also moved two
-results that had been reported without it: the sort no longer beats the search
-on PSD95-PDZ3, and the synthetic track now separates under a window. Both are
-noted where they appear.
+over half of it is in territory you cannot ship. Adding it also moved a result
+that had been reported without it: the sort no longer beats the search on
+PSD95-PDZ3. It briefly moved a second — the synthetic track separating under a
+window — which the [window-rule correction](#give-the-objective-a-target-range)
+has since reversed. Both are noted where they appear.
 
 ---
 
@@ -858,6 +942,7 @@ python experiments/baselines.py --track additive    # baselines + exact optimum
 python experiments/baselines.py --track synthetic   # the same check, with epistasis
 for d in GB1 GRB2-SH3 PSD95-PDZ3; do
   python experiments/windows.py --landscape additive --domain $d   # both regimes
+  python experiments/windows.py --landscape additive --domain $d --rule naive
 done
 python experiments/windows.py --landscape synthetic
 for d in GB1 GRB2-SH3 PSD95-PDZ3; do
@@ -911,6 +996,18 @@ how you get it.
   [`baselines.py`](experiments/baselines.py) and stated up front rather
   than buried here. The rankings that survive are on the synthetic track,
   where the same baseline loses by about 2 kcal/mol.
+- **The target-window rescue is domain-dependent, and unexplained.** It
+  recovers a search advantage on two of the three measured domains; on the
+  third, and on the synthetic track, greedy forward selection reaches the
+  window too. The ordering in the results is consistent with how much room
+  the constraint leaves around the target, but four tracks cannot separate
+  that from window width. Settling it needs the target swept across the span
+  at fixed width, which is not run here.
+- **Window placement is a rule, not a fact.** The centre is the midpoint of
+  the constrained span and the half-width is twice the median binding error.
+  Both are defensible and both are choices, and the first version of this
+  experiment got the centre wrong in a way that changed the headline result.
+  A different defensible rule could move it again.
 - **No method gets close to optimal.** Where the optimum is computable the
   best rules capture 68-85% of it. Nothing here is evidence that any of
   these rules searches well in absolute terms.

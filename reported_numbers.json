@@ -370,6 +370,8 @@
   },
   "windows": {
     "GB1": {
+      "best_feasible_single": -0.642,
+      "constrained_optimum": -2.473,
       "minimize": {
         "beats_greedy": false,
         "best_rule": "nsga2",
@@ -378,19 +380,44 @@
         "greedy_cost": -1.97,
         "p_value": 0.333
       },
+      "naive": {
+        "minimize": {
+          "beats_greedy": false,
+          "best_rule": "nsga2",
+          "best_rule_cost": -2.118,
+          "gap": 0.148,
+          "greedy_cost": -1.97,
+          "p_value": 0.333
+        },
+        "widenings": 0,
+        "window": {
+          "beats_greedy": true,
+          "best_rule": "nsga2",
+          "best_rule_cost": 0.106,
+          "gap": 1.17,
+          "greedy_cost": 1.276,
+          "p_value": 0.0
+        },
+        "window_hi": -2.092,
+        "window_lo": -2.113,
+        "window_width": 0.021
+      },
       "widenings": 0,
       "window": {
         "beats_greedy": true,
         "best_rule": "nsga2",
-        "best_rule_cost": 0.106,
-        "gap": 1.17,
-        "greedy_cost": 1.276,
+        "best_rule_cost": 0.0,
+        "gap": 0.731,
+        "greedy_cost": 0.731,
         "p_value": 0.0
       },
-      "window_hi": -2.092,
-      "window_lo": -2.113
+      "window_hi": -1.547,
+      "window_lo": -1.568,
+      "window_width": 0.021
     },
     "GRB2-SH3": {
+      "best_feasible_single": -0.883,
+      "constrained_optimum": -3.787,
       "minimize": {
         "beats_greedy": false,
         "best_rule": "scalarization_w0.5",
@@ -399,19 +426,44 @@
         "greedy_cost": -2.579,
         "p_value": 0.102
       },
+      "naive": {
+        "minimize": {
+          "beats_greedy": false,
+          "best_rule": "scalarization_w0.5",
+          "best_rule_cost": -3.206,
+          "gap": 0.627,
+          "greedy_cost": -2.579,
+          "p_value": 0.102
+        },
+        "widenings": 0,
+        "window": {
+          "beats_greedy": true,
+          "best_rule": "fixed_penalty",
+          "best_rule_cost": 0.127,
+          "gap": 0.461,
+          "greedy_cost": 0.588,
+          "p_value": 0.014
+        },
+        "window_hi": -3.163,
+        "window_lo": -3.401,
+        "window_width": 0.239
+      },
       "widenings": 0,
       "window": {
-        "beats_greedy": true,
+        "beats_greedy": false,
         "best_rule": "fixed_penalty",
-        "best_rule_cost": 0.127,
-        "gap": 0.461,
-        "greedy_cost": 0.588,
-        "p_value": 0.014
+        "best_rule_cost": 0.0,
+        "gap": 0.0,
+        "greedy_cost": 0.0,
+        "p_value": 1.0
       },
-      "window_hi": -3.163,
-      "window_lo": -3.401
+      "window_hi": -2.216,
+      "window_lo": -2.454,
+      "window_width": 0.239
     },
     "PSD95-PDZ3": {
+      "best_feasible_single": -0.587,
+      "constrained_optimum": -2.442,
       "minimize": {
         "beats_greedy": false,
         "best_rule": "nsga2",
@@ -420,19 +472,44 @@
         "greedy_cost": -2.196,
         "p_value": 0.184
       },
-      "widenings": 4,
+      "naive": {
+        "minimize": {
+          "beats_greedy": false,
+          "best_rule": "nsga2",
+          "best_rule_cost": -1.874,
+          "gap": -0.323,
+          "greedy_cost": -2.196,
+          "p_value": 0.184
+        },
+        "widenings": 4,
+        "window": {
+          "beats_greedy": true,
+          "best_rule": "nsga2",
+          "best_rule_cost": 0.097,
+          "gap": 0.659,
+          "greedy_cost": 0.756,
+          "p_value": 0.0
+        },
+        "window_hi": -1.91,
+        "window_lo": -5.001,
+        "window_width": 3.091
+      },
+      "widenings": 0,
       "window": {
         "beats_greedy": true,
-        "best_rule": "nsga2",
-        "best_rule_cost": 0.097,
-        "gap": 0.659,
-        "greedy_cost": 0.756,
+        "best_rule": "lagrangian",
+        "best_rule_cost": 0.0,
+        "gap": 0.263,
+        "greedy_cost": 0.263,
         "p_value": 0.0
       },
-      "window_hi": -1.91,
-      "window_lo": -5.001
+      "window_hi": -1.418,
+      "window_lo": -1.611,
+      "window_width": 0.193
     },
     "synthetic": {
+      "best_feasible_single": -0.445,
+      "constrained_optimum": -5.011,
       "minimize": {
         "beats_greedy": true,
         "best_rule": "nsga2",
@@ -441,17 +518,40 @@
         "greedy_cost": -2.127,
         "p_value": 0.0
       },
-      "widenings": 2,
-      "window": {
-        "beats_greedy": true,
-        "best_rule": "nsga2",
-        "best_rule_cost": 0.627,
-        "gap": 1.251,
-        "greedy_cost": 1.878,
-        "p_value": 0.002
+      "naive": {
+        "minimize": {
+          "beats_greedy": true,
+          "best_rule": "nsga2",
+          "best_rule_cost": -4.311,
+          "gap": 2.185,
+          "greedy_cost": -2.127,
+          "p_value": 0.0
+        },
+        "widenings": 2,
+        "window": {
+          "beats_greedy": true,
+          "best_rule": "nsga2",
+          "best_rule_cost": 0.627,
+          "gap": 1.251,
+          "greedy_cost": 1.878,
+          "p_value": 0.002
+        },
+        "window_hi": -4.94,
+        "window_lo": -5.74,
+        "window_width": 0.8
       },
-      "window_hi": -4.94,
-      "window_lo": -5.74
+      "widenings": 0,
+      "window": {
+        "beats_greedy": false,
+        "best_rule": "fixed_penalty",
+        "best_rule_cost": 0.0,
+        "gap": 0.0,
+        "greedy_cost": 0.0,
+        "p_value": 1.0
+      },
+      "window_hi": -2.628,
+      "window_lo": -2.828,
+      "window_width": 0.2
     }
   }
 }

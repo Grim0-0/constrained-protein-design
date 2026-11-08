@@ -264,7 +264,15 @@ def test_the_record_is_sorted_and_diffable():
 # The two-regime window table
 # --------------------------------------------------------------------------
 
-WINDOW_HEADER = "| domain | window | widened | regime | best rule | greedy | gap | *p* | verdict |"
+WINDOW_HEADER = (
+    "| domain | window | width | widened | regime | best rule | greedy | gap "
+    "| *p* | verdict |"
+)
+
+#: The table comparing the superseded window rule against the corrected one.
+WINDOW_RULE_HEADER = (
+    "| domain | old window | width | widened | new window | width | widened |"
+)
 
 
 def _window_table(readme: str) -> dict[tuple[str, str], list[str]]:
@@ -283,7 +291,7 @@ def _window_table(readme: str) -> dict[tuple[str, str], list[str]]:
         cells = [c.strip() for c in body.strip().strip("|").split("|")]
         if cells[0]:
             domain = cells[0]
-        regime = cells[3].replace("**", "").strip()
+        regime = cells[4].replace("**", "").strip()
         rows[(domain, regime)] = cells
     return rows
 
@@ -300,18 +308,19 @@ def test_the_window_table_matches_the_record(readme, record, domain):
     stored = record["windows"][domain]
     rows = _window_table(readme)
 
-    # The window bounds and the widening count, stated once per domain.
+    # The window, its width and the widening count, stated once per domain.
     first = rows[(domain, "unbounded")]
     bounds = re.findall(r"[-+]?\d+\.\d+", first[1].replace(MINUS, "-"))
     assert len(bounds) == 2, f"{domain}: could not read the window bounds"
     assert float(bounds[0]) == pytest.approx(stored["window_lo"], abs=TOLERANCE)
     assert float(bounds[1]) == pytest.approx(stored["window_hi"], abs=TOLERANCE)
-    assert first[2].rstrip("x×") == str(stored["widenings"])
+    assert _number(first[2]) == pytest.approx(stored["window_width"], abs=TOLERANCE)
+    assert first[3].rstrip("x×") == str(stored["widenings"])
 
     for regime, key in (("unbounded", "minimize"), ("window", "window")):
         cells = rows[(domain, regime)]
         want = stored[key]
-        for index, name in ((4, "best_rule_cost"), (5, "greedy_cost"), (6, "gap"), (7, "p_value")):
+        for index, name in ((5, "best_rule_cost"), (6, "greedy_cost"), (7, "gap"), (8, "p_value")):
             got = _number(cells[index])
             assert got is not None, f"{domain}/{regime}: no number in the {name} cell"
             assert abs(got - want[name]) <= TOLERANCE, (
@@ -339,40 +348,115 @@ def test_the_window_verdicts_match_the_significance_results(readme, record):
 MEASURED = ("GB1", "GRB2-SH3", "PSD95-PDZ3")
 
 
-def test_the_window_rescues_exactly_the_domains_the_prose_claims(readme, record):
+def _flipped(record) -> list[str]:
     """"Flips" means a specific thing: not separated unbounded, separated windowed."""
-    flipped = [
+    return [
         d for d in MEASURED
         if not record["windows"][d]["minimize"]["beats_greedy"]
         and record["windows"][d]["window"]["beats_greedy"]
     ]
-    assert flipped == list(MEASURED), (
-        f"only {flipped} flip from not-separated to a win; the README claims all "
-        "three measured domains do"
+
+
+def _claimed(readme: str, label: str) -> list[str]:
+    """The domains the README names after ``label``, in its summary line."""
+    match = re.search(rf"\*\*{label}:\*\* ([^.]*)\.", readme)
+    assert match, f"the window section states no {label!r} line"
+    return [d.strip() for d in match.group(1).split(",") if d.strip()]
+
+
+def test_the_window_rescues_exactly_the_domains_the_prose_claims(readme, record):
+    """The prose names which domains flip; the record decides which ones do.
+
+    An earlier version of this test asserted that all three flip. That made
+    it a test of the result rather than of agreement between the prose and
+    the record, so correcting the window-selection rule broke the test
+    instead of the claim.
+    """
+    flipped = _flipped(record)
+    held = [d for d in MEASURED if d not in flipped]
+    assert sorted(_claimed(readme, "Flips on")) == sorted(flipped), (
+        f"the record says {flipped} flip"
     )
-    flat = " ".join(readme.split())
-    assert "On all three measured domains the finding flips" in flat
+    assert sorted(_claimed(readme, "Does not flip on")) == sorted(held), (
+        f"the record says {held} do not flip"
+    )
+    assert "On all three measured domains the finding flips" not in " ".join(
+        readme.split()
+    ) or len(flipped) == 3
 
 
 def test_the_synthetic_row_is_described_the_way_it_behaves(readme, record):
-    """It won unbounded too, so it is a confirmation, not a flip, and not a failure."""
+    """It wins unbounded, so only its windowed row can claim anything new."""
     synthetic = record["windows"]["synthetic"]
     flat = " ".join(readme.split())
-    if synthetic["minimize"]["beats_greedy"] and synthetic["window"]["beats_greedy"]:
-        assert "wins under the window too" in flat
-        assert "The synthetic track does not reproduce it" not in flat, (
-            "the synthetic track now separates under the window; the old caveat "
-            "must not still be in the README"
+    if not synthetic["window"]["beats_greedy"]:
+        assert "wins under the window too" not in flat, (
+            "the synthetic track does not separate under the window; the README "
+            "must not say it does"
         )
     else:
-        assert "wins under the window too" not in flat
+        assert "wins under the window too" in flat
 
 
-def test_a_withdrawn_caveat_is_withdrawn_in_the_open(readme):
+def _rule_table(readme: str) -> dict[str, list[str]]:
+    """Rows of the old-rule/new-rule comparison, keyed by domain, cells intact."""
+    lines = readme.splitlines()
+    start = lines.index(WINDOW_RULE_HEADER)
+    rows: dict[str, list[str]] = {}
+    for body in lines[start + 2:]:
+        if not body.startswith("|"):
+            break
+        cells = [c.strip() for c in body.strip().strip("|").split("|")]
+        rows[cells[0]] = cells
+    return rows
+
+
+def test_the_window_rule_comparison_matches_the_record(readme, record):
+    """Both rules are reported, so both have to agree with what was run."""
+    rows = _rule_table(readme)
+    for domain, stored in record["windows"].items():
+        assert domain in rows, f"{domain} missing from the window-rule comparison"
+        cells = rows[domain]
+        for offset, entry in ((1, stored["naive"]), (4, stored)):
+            bounds = re.findall(r"[-+]?\d+\.\d+", cells[offset].replace(MINUS, "-"))
+            assert len(bounds) == 2, f"{domain}: unreadable window in column {offset}"
+            assert float(bounds[0]) == pytest.approx(entry["window_lo"], abs=TOLERANCE)
+            assert float(bounds[1]) == pytest.approx(entry["window_hi"], abs=TOLERANCE)
+            assert _number(cells[offset + 1]) == pytest.approx(
+                entry["window_width"], abs=TOLERANCE
+            )
+            assert cells[offset + 2].replace("**", "").rstrip("x×") == str(
+                entry["widenings"]
+            )
+
+
+def test_the_width_disparity_the_correction_removed_is_stated_correctly(readme, record):
+    """The headline number for why the old rule was broken, from the old runs."""
+    widths = [e["naive"]["window_width"] for e in record["windows"].values()]
+    ratio = max(widths) / min(widths)
+    flat = " ".join(readme.split())
+    assert f"{ratio:.0f}× wider" in flat, (
+        f"the superseded rule's widest window was {ratio:.0f}x its narrowest"
+    )
+
+
+def test_the_corrected_rule_never_needs_widening(readme, record):
+    """The README claims this as the reason to consult tau; check it holds."""
+    widened = {d: e["widenings"] for d, e in record["windows"].items()
+               if e["widenings"]}
+    flat = " ".join(readme.split())
+    if "0× on all four tracks" in flat:
+        assert not widened, f"the README claims no widening, but {widened} widened"
+
+
+def test_a_withdrawn_claim_is_withdrawn_in_the_open(readme):
     """Results that moved under a change get a note, not a silent edit."""
     flat = " ".join(readme.split())
-    assert "The caveat is withdrawn." in flat
-    assert "An earlier version of this section reported" in flat
+    assert "**An earlier version of this section**" in flat
+    assert "--rule naive" in readme, (
+        "the superseded window rule must stay runnable for the correction to "
+        "be checkable"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -588,3 +672,70 @@ def test_the_readme_says_the_bound_stops_at_doubles(readme):
     flat = " ".join(readme.split())
     assert "Table S6 stops at doubles" in flat
     assert "nothing here measures it at three or four" in flat
+
+
+# --------------------------------------------------------------------------
+# The scope of the hyperparameter-robustness claim
+# --------------------------------------------------------------------------
+#
+# This is the one claim in the README that survived the baseline result, so
+# it is the one most worth overstating. It compares three rules that take a
+# knob. NSGA-II takes none, and runs in the same comparison, so an unscoped
+# version of the claim -- "treat the constraint as a constraint and you get
+# indifference to a hyperparameter" -- is answered by "or use a rule that has
+# no hyperparameter". The scope has to be stated, and these pin it to the
+# code rather than to prose.
+
+
+def _feasible_fraction(record, rule: str) -> list[float]:
+    """Share of the returned set that clears tau, per domain, for one rule."""
+    returned = record["settings"]["n_designs_returned"]
+    return [
+        round(entry[rule]["n_feasible"] / returned, 2)
+        for entry in record["diversity"].values()
+        if rule in entry
+    ]
+
+
+def test_the_tuning_claim_is_scoped_to_rules_that_have_a_knob(readme):
+    """Any benchmarked rule the sweep does not cover forces the qualifier."""
+    from cpd.methods import default_methods
+
+    from experiments.tuning_cost import SWEEPS
+
+    uncovered = sorted(set(default_methods()) - set(SWEEPS) - {"scalarization_w0.5"})
+    if not uncovered:
+        return
+    flat = " ".join(readme.split())
+    assert "Among the rules that take a knob" in flat, (
+        f"{uncovered} are benchmarked but have no knob to sweep, so the "
+        "hyperparameter-robustness claim cannot be stated over all the rules"
+    )
+    assert "has no weight, no penalty coefficient and no learning rate" in flat, (
+        "the README must say which rule sidesteps the hyperparameter problem "
+        "entirely, not merely hedge the claim"
+    )
+
+
+def test_the_price_nsga2_pays_matches_the_record(readme, record):
+    """The trade-off is the whole argument, so its numbers are load-bearing."""
+    nsga2 = _feasible_fraction(record, "nsga2")
+    penalty = _feasible_fraction(record, "fixed_penalty")
+    flat = " ".join(readme.split())
+    claim = f"{100 * min(nsga2):.0f}\N{EN DASH}{100 * max(nsga2):.0f}% feasible"
+    assert claim in flat, (
+        f"the record puts NSGA-II at {claim}; the README says something else"
+    )
+    penalty_claim = (
+        f"{100 * min(penalty):.0f}\N{EN DASH}{100 * max(penalty):.0f}% "
+        "for the fixed penalty"
+    )
+    assert flat.count(penalty_claim) == 2, (
+        f"the record puts the fixed penalty at {penalty_claim}, and the README "
+        "states that range in both the NSGA-II section and the tuning section"
+    )
+    worst = f"{100 * (1 - min(nsga2)):.0f}% unusable at worst"
+    assert flat.count(worst) == 2, (
+        f"the worst NSGA-II set in the record is {worst}; both blockquotes that "
+        "price the trade-off have to say so, and neither may round it down"
+    )

@@ -90,26 +90,48 @@ def _budgets_used() -> list[int]:
     return sorted(budgets)
 
 
+def _verdict(row) -> dict:
+    """One regime's outcome against its own greedy baseline."""
+    return {
+        "best_rule": str(row["best_rule"]),
+        "best_rule_cost": round(float(row["best_rule_cost"]), 3),
+        "greedy_cost": round(float(row["greedy_cost"]), 3),
+        "gap": round(float(row["gap"]), 3),
+        "p_value": round(float(row["p_value"]), 3),
+        "beats_greedy": bool(row["beats_greedy"]),
+    }
+
+
 def _window_rows() -> dict:
-    """The two-regime comparison, per domain, from experiments/windows.py."""
+    """The two-regime comparison, per domain, from experiments/windows.py.
+
+    Both window-selection rules are recorded. The ``reachable`` rule is the
+    one the README reports; ``naive`` is the superseded rule, kept nested
+    under each domain so the correction stays checkable from the record
+    rather than from memory.
+    """
     out: dict = {}
     for path in sorted(RESULTS_DIR.glob("windows_*_summary.csv")):
         frame = pd.read_csv(path)
-        for domain, group in frame.groupby("domain"):
+        if "window_rule" not in frame:
+            raise SystemExit(
+                f"{path.name} predates the window-rule correction; re-run "
+                "experiments/windows.py for this track"
+            )
+        for (domain, rule), group in frame.groupby(["domain", "window_rule"]):
             entry = out.setdefault(str(domain), {})
+            if str(rule) != "reachable":
+                entry = entry.setdefault(str(rule), {})
             first = group.iloc[0]
             entry["window_lo"] = round(float(first["window_lo"]), 3)
             entry["window_hi"] = round(float(first["window_hi"]), 3)
+            entry["window_width"] = round(float(first["window_width"]), 3)
             entry["widenings"] = int(first["widenings"])
+            if str(rule) == "reachable":
+                entry["best_feasible_single"] = round(float(first["best_feasible_single"]), 3)
+                entry["constrained_optimum"] = round(float(first["constrained_optimum"]), 3)
             for _, row in group.iterrows():
-                entry[str(row["regime"])] = {
-                    "best_rule": str(row["best_rule"]),
-                    "best_rule_cost": round(float(row["best_rule_cost"]), 3),
-                    "greedy_cost": round(float(row["greedy_cost"]), 3),
-                    "gap": round(float(row["gap"]), 3),
-                    "p_value": round(float(row["p_value"]), 3),
-                    "beats_greedy": bool(row["beats_greedy"]),
-                }
+                entry[str(row["regime"])] = _verdict(row)
     return out
 
 
