@@ -25,8 +25,8 @@ does and does not claim.
 > design quality as posed.
 > [Give the objective a target range](#give-the-objective-a-target-range)
 > — posed the way affinity engineering actually poses it, as a target window
-> rather than unbounded minimization, the search advantage returns on two of
-> the three measured domains.
+> rather than unbounded minimization, the search advantage comes back on part
+> of the measured track. That section names which domains and which not.
 
 ---
 
@@ -45,10 +45,9 @@ below, which is the single biggest caveat on everything here. The same
 comparison on the zero-error Track 1 oracle ranks the rules identically.
 
 Worth knowing before the figure rather than after it: that composition can be
-checked against measured double mutants on five domain-and-assay pairs, and
-**GRB2-SH3 binding is the weakest of the five** — Spearman ρ = 0.672, against
-0.958 for GB1 binding. The domain this headline is drawn on rests on the
-composition the data vouches for least.
+checked against measured double mutants, and of the pairs it can be checked
+on, **GRB2-SH3 binding is the weakest**. The domain this headline is drawn on
+rests on the composition the data vouches for least.
 [How far the additive oracle can be trusted](#how-far-the-additive-oracle-can-be-trusted)
 has the numbers.
 
@@ -145,10 +144,11 @@ is a spread across knob settings rather than a ranking against a baseline, and
 it replicates on the synthetic track where the search does bind.
 
 **Partly recovered.** Posed as a target window instead of unbounded
-minimization, the same rules on the same oracle beat the same baseline on two
-of the three measured domains; on the third the sort reaches the window too.
-See [the next section](#give-the-objective-a-target-range): part of what is
-too easy here is the unbounded objective, not constrained design.
+minimization, the same rules on the same oracle beat the same baseline on part
+of the measured track, and not all of it.
+See [the next section](#give-the-objective-a-target-range) for which domains
+and which not: part of what is too easy here is the unbounded objective, not
+constrained design.
 
 **The generalizable part.** Additive ΔΔG models and per-residue predictors are
 common oracles in multi-objective protein design, and a separable oracle makes
@@ -263,11 +263,11 @@ window, so 0.000 means a design landed inside it.
 
 **Flips on:** GB1, PSD95-PDZ3. **Does not flip on:** GRB2-SH3.
 
-On GB1 and PSD95-PDZ3 the effect is real and large: unbounded, no rule
-separates from a search-free sort; against a window, both separate at *p* <
-0.001 and the sort never once lands inside. On GRB2-SH3 and the synthetic
-track it is not there at all — greedy forward selection toward the target
-reaches the window too, and every method ties at zero distance.
+Where it flips, the effect is large: unbounded, no rule separates from a
+search-free sort; against a window the separation is *p* < 0.001 and the sort
+never once lands inside. Where it does not, greedy forward selection toward
+the target reaches the window too and every method ties at zero distance —
+including on the synthetic track, which the unbounded regime had separated.
 
 So a target range is not a universal rescue, and the first version of this
 section said it was. What it is, is a framing under which the search can
@@ -297,10 +297,10 @@ target swept across the span at fixed width, which this repo has not run.
 ### What survives
 
 > A separable oracle degenerates into a knapsack that a sort nearly solves.
-> Giving the objective a target range recovers a search advantage on two of
-> the three measured domains, on the same oracle, engine, budget and seeds —
-> and on the other two tracks the sort reaches the window as well. Framing the
-> objective as a range makes the problem hard sometimes, not always.
+> Giving the objective a target range recovers a search advantage on the
+> domains named above, on the same oracle, engine, budget and seeds — and on
+> the rest the sort reaches the window as well. Framing the objective as a
+> range makes the problem hard sometimes, not always.
 
 > **An earlier version of this section** reported that all three measured
 > domains flip, on the window rule that never consulted the constraint. Under
@@ -425,14 +425,16 @@ distance, so there is nothing to set wrong — and it is the strongest searcher
 in this repo besides. *Use the Lagrangian because it tolerates a badly chosen
 knob* is no answer to *use NSGA-II and choose nothing*.
 
-What it costs is in the same results. Its delivered sets are 44–83% feasible
-against 97–100% for the fixed penalty, because nothing in it knows where τ
-is. So the two are not ranked against each other; they are priced:
+What it costs is in the same results: a fraction of every set it returns
+breaks the constraint, because nothing in it knows where τ is.
+[What NSGA-II showed](#what-nsga-ii-showed) has the rates, beside the fixed
+penalty's. So the two rules are not ranked against each other;
+they are priced:
 
 > Among rules that take a hyperparameter, the Lagrangian is the one you can
 > set wrong most cheaply. NSGA-II avoids the problem by construction and pays
-> for it in yield — 56% unusable at worst. The choice
-> is between a knob you have to guess and a yield you have to accept.
+> for it in yield. The choice is between a knob you have to guess and a yield
+> you have to accept.
 
 That is this repo's thesis demonstrated by a method rather than argued at
 one: whatever you do not tell the search about the constraint, you pay for
@@ -593,9 +595,9 @@ returns by far the most varied designs — 3.42, 3.23 and
 4.01 mean pairwise distance, the highest on every domain — which is what
 crowding distance is for.
 
-And it never sees τ, which is the whole point. Its delivered sets are 83%,
-44% and 56% feasible, against 97–100% for the fixed penalty. So the trade-off
-is explicit rather than rhetorical:
+And it never sees τ, which is the whole point. Across the measured domains its
+delivered sets are 44–83% feasible, against 97–100% for the fixed penalty. So
+the trade-off is explicit rather than rhetorical:
 
 > Non-dominated sorting searches better and spreads wider than any
 > constraint-handling rule here. It also hands back sets that are
@@ -787,9 +789,9 @@ So the honest version of the caveat is: **additivity preserves rank at
 ρ = 0.67–0.96 at order 2, so Track 2 rankings are trustworthy to roughly that
 resolution and no better.**
 
-**The headline domain is the weakest one.** GRB2-SH3 binding is ρ = 0.672, the
-lowest of the five, and it is the domain the headline figures use. That is not
-a comfortable result and it is not buried: the binding energies this benchmark
+**The headline domain is the weakest one.** GRB2-SH3 binding is the lowest row
+in that table, and it is the domain the headline figures use. That is not a
+comfortable result and it is not buried: the binding energies this benchmark
 optimizes hardest are the ones the additive model reproduces least faithfully.
 GB1 binding, at 0.958 across 383,000 doubles, is close to exact.
 
@@ -997,9 +999,10 @@ how you get it.
   than buried here. The rankings that survive are on the synthetic track,
   where the same baseline loses by about 2 kcal/mol.
 - **The target-window rescue is domain-dependent, and unexplained.** It
-  recovers a search advantage on two of the three measured domains; on the
-  third, and on the synthetic track, greedy forward selection reaches the
-  window too. The ordering in the results is consistent with how much room
+  recovers a search advantage on some domains and not others
+  ([which](#give-the-objective-a-target-range)); where it fails, greedy
+  forward selection reaches the window too. The ordering is consistent with
+  how much room
   the constraint leaves around the target, but four tracks cannot separate
   that from window width. Settling it needs the target swept across the span
   at fixed width, which is not run here.
@@ -1032,9 +1035,9 @@ how you get it.
   disproportionately the interface positions this benchmark cares about.
   Propagating the published standard errors in quadrature as independent
   understates the true uncertainty for the same reason. Now
-  [measured rather than asserted](#how-far-the-additive-oracle-can-be-trusted):
-  rank fidelity is ρ = 0.67–0.96 at order 2, and the headline domain is the
-  weakest of the five. Nothing bounds it at the three and four substitutions
+  [measured rather than asserted](#how-far-the-additive-oracle-can-be-trusted),
+  where the rank fidelities are tabulated and the headline domain is the
+  weakest of them. Nothing bounds it at the three and four substitutions
   the oracle actually composes, because the published data stops at doubles.
 - **No wet-lab validation.** None of these designs have been made. This work is
   entirely computational.

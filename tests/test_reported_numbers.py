@@ -380,22 +380,6 @@ def test_the_window_rescues_exactly_the_domains_the_prose_claims(readme, record)
     assert sorted(_claimed(readme, "Does not flip on")) == sorted(held), (
         f"the record says {held} do not flip"
     )
-    assert "On all three measured domains the finding flips" not in " ".join(
-        readme.split()
-    ) or len(flipped) == 3
-
-
-def test_the_synthetic_row_is_described_the_way_it_behaves(readme, record):
-    """It wins unbounded, so only its windowed row can claim anything new."""
-    synthetic = record["windows"]["synthetic"]
-    flat = " ".join(readme.split())
-    if not synthetic["window"]["beats_greedy"]:
-        assert "wins under the window too" not in flat, (
-            "the synthetic track does not separate under the window; the README "
-            "must not say it does"
-        )
-    else:
-        assert "wins under the window too" in flat
 
 
 def _rule_table(readme: str) -> dict[str, list[str]]:
@@ -430,23 +414,21 @@ def test_the_window_rule_comparison_matches_the_record(readme, record):
             )
 
 
-def test_the_width_disparity_the_correction_removed_is_stated_correctly(readme, record):
-    """The headline number for why the old rule was broken, from the old runs."""
-    widths = [e["naive"]["window_width"] for e in record["windows"].values()]
-    ratio = max(widths) / min(widths)
-    flat = " ".join(readme.split())
-    assert f"{ratio:.0f}× wider" in flat, (
-        f"the superseded rule's widest window was {ratio:.0f}x its narrowest"
-    )
+def test_a_track_that_widened_cannot_be_claimed_as_one_that_did_not(readme, record):
+    """The positive direction is in the declared-once table; this is the other.
 
-
-def test_the_corrected_rule_never_needs_widening(readme, record):
-    """The README claims this as the reason to consult tau; check it holds."""
+    Stated as an absence rather than a presence, because the phrase to look
+    for only exists while the claim is true: a conditional guard that reads
+    ``if phrase in readme`` passes the moment the phrase is reworded.
+    """
     widened = {d: e["widenings"] for d, e in record["windows"].items()
                if e["widenings"]}
+    if not widened:
+        return
     flat = " ".join(readme.split())
-    if "0× on all four tracks" in flat:
-        assert not widened, f"the README claims no widening, but {widened} widened"
+    assert "needed it" not in flat or "0×" not in flat, (
+        f"{widened} needed widening; the README must not claim none did"
+    )
 
 
 def test_a_withdrawn_claim_is_withdrawn_in_the_open(readme):
@@ -639,32 +621,48 @@ def test_the_additivity_table_matches_the_record(readme, record):
     assert seen == expected, f"table and record disagree on rows: {seen ^ expected}"
 
 
-def test_the_quoted_rho_range_matches_the_record(readme, record):
-    values = [
-        v["rho_agreement"]
-        for assays in record["additivity"].values()
-        for v in assays.values()
-    ]
-    flat = " ".join(readme.split())
-    assert f"ρ = {min(values):.2f}–{max(values):.2f} at order 2" in flat, (
-        f"the quoted rho range no longer matches the record "
-        f"({min(values):.2f}-{max(values):.2f})"
-    )
+def _headline_domain(readme: str) -> str:
+    """Which domain the headline figure is drawn on, from the figure it embeds.
+
+    Read out of the README rather than hardcoded, so that pointing the
+    headline at another domain moves this check with it.
+    """
+    match = re.search(r"figures/headline_tau_sweep_additive_([A-Za-z0-9-]+)\.png",
+                      readme)
+    assert match, "no headline figure in the README to read a domain from"
+    return match.group(1)
+
+
+WEAKEST_CLAIM = "The headline domain is the weakest one"
 
 
 def test_the_readme_admits_the_headline_domain_is_the_weakest(readme, record):
-    """If that stops being true the prose must change, not stay flattering."""
+    """Consistency, not a fixed answer.
+
+    An earlier version asserted that the weakest pair *is* GRB2-SH3 binding,
+    which made it a test of the result: a record where some other pair came
+    out weakest would fail the test rather than contradict the prose. It now
+    requires the claim exactly when the record supports it, and forbids it
+    otherwise -- the flattering direction is the one worth guarding.
+    """
     worst = min(
         ((d, a, v["rho_agreement"]) for d, assays in record["additivity"].items()
          for a, v in assays.items()),
         key=lambda row: row[2],
     )
-    assert worst[:2] == ("GRB2-SH3", "Binding"), (
-        f"the weakest additivity is now {worst[0]}/{worst[1]}; the README says "
-        "GRB2-SH3 binding"
-    )
     flat = " ".join(readme.split())
-    assert "The headline domain is the weakest one" in flat
+    claimed = WEAKEST_CLAIM in flat
+    holds = worst[:2] == (_headline_domain(readme), "Binding")
+    if holds:
+        assert claimed, (
+            f"{worst[0]}/{worst[1]} is the weakest pair in the record and it is "
+            "the headline domain; the README has to say so"
+        )
+    else:
+        assert not claimed, (
+            f"the weakest pair is now {worst[0]}/{worst[1]}, not the headline "
+            "domain; the README still claims otherwise"
+        )
 
 
 def test_the_readme_says_the_bound_stops_at_doubles(readme):
@@ -698,7 +696,14 @@ def _feasible_fraction(record, rule: str) -> list[float]:
 
 
 def test_the_tuning_claim_is_scoped_to_rules_that_have_a_knob(readme):
-    """Any benchmarked rule the sweep does not cover forces the qualifier."""
+    """Any benchmarked rule the sweep does not cover forces the qualifier.
+
+    The second assertion asks for a subsection that names the alternative,
+    rather than pinning one sentence inside it. A guard that matches an exact
+    phrasing passes the moment that phrasing is reworded, which is the failure
+    mode this file exists to avoid -- so where a claim cannot be reduced to a
+    figure, check its shape and let the wording move.
+    """
     from cpd.methods import default_methods
 
     from experiments.tuning_cost import SWEEPS
@@ -711,31 +716,76 @@ def test_the_tuning_claim_is_scoped_to_rules_that_have_a_knob(readme):
         f"{uncovered} are benchmarked but have no knob to sweep, so the "
         "hyperparameter-robustness claim cannot be stated over all the rules"
     )
-    assert "has no weight, no penalty coefficient and no learning rate" in flat, (
-        "the README must say which rule sidesteps the hyperparameter problem "
-        "entirely, not merely hedge the claim"
+    subheadings = [l for l in readme.splitlines() if l.startswith("####")]
+    assert any("NSGA-II" in h for h in subheadings), (
+        "the qualifier needs a subsection naming the rule that sidesteps the "
+        "problem by construction; hedging the claim without saying what beats "
+        "it leaves the reader to work that out"
     )
 
 
-def test_the_price_nsga2_pays_matches_the_record(readme, record):
-    """The trade-off is the whole argument, so its numbers are load-bearing."""
+NUMBER_WORDS = {2: "two", 3: "three", 4: "four", 5: "five", 6: "six"}
+
+
+def _declared_once(record) -> dict[str, str]:
+    """Each guarded figure, and the single string the README may state it in.
+
+    A figure stated in two places is two surfaces that can drift apart, and
+    a guard over the second one only ever proves that *that copy* still
+    matches -- it says nothing about a reworded sentence beside it. So the
+    README declares each of these once, in the section that owns it, and
+    links to that section everywhere else. These tests fail on a second
+    occurrence as well as on a wrong one, which is what keeps the number of
+    surfaces from growing back.
+    """
     nsga2 = _feasible_fraction(record, "nsga2")
     penalty = _feasible_fraction(record, "fixed_penalty")
-    flat = " ".join(readme.split())
-    claim = f"{100 * min(nsga2):.0f}\N{EN DASH}{100 * max(nsga2):.0f}% feasible"
-    assert claim in flat, (
-        f"the record puts NSGA-II at {claim}; the README says something else"
-    )
-    penalty_claim = (
-        f"{100 * min(penalty):.0f}\N{EN DASH}{100 * max(penalty):.0f}% "
-        "for the fixed penalty"
-    )
-    assert flat.count(penalty_claim) == 2, (
-        f"the record puts the fixed penalty at {penalty_claim}, and the README "
-        "states that range in both the NSGA-II section and the tuning section"
-    )
-    worst = f"{100 * (1 - min(nsga2)):.0f}% unusable at worst"
-    assert flat.count(worst) == 2, (
-        f"the worst NSGA-II set in the record is {worst}; both blockquotes that "
-        "price the trade-off have to say so, and neither may round it down"
+    widths = [e["naive"]["window_width"] for e in record["windows"].values()]
+    rhos = [v["rho_agreement"] for assays in record["additivity"].values()
+            for v in assays.values()]
+    flipped = _flipped(record)
+    held = [d for d in MEASURED if d not in flipped]
+    tracks = len(record["windows"])
+
+    claims = {
+        "which domains the window rescues": (
+            f"**Flips on:** {', '.join(flipped) or 'none'}. "
+            f"**Does not flip on:** {', '.join(held) or 'none'}."
+        ),
+        "NSGA-II feasibility range": (
+            f"{100 * min(nsga2):.0f}\N{EN DASH}{100 * max(nsga2):.0f}% feasible"
+        ),
+        "fixed-penalty feasibility range": (
+            f"{100 * min(penalty):.0f}\N{EN DASH}{100 * max(penalty):.0f}% "
+            "for the fixed penalty"
+        ),
+        "worst unusable share": (
+            f"{100 * (1 - min(nsga2)):.0f}% unusable at worst"
+        ),
+        "width disparity the correction removed": (
+            f"{max(widths) / min(widths):.0f}\N{MULTIPLICATION SIGN} wider"
+        ),
+        "additivity rank-fidelity range": (
+            f"\N{GREEK SMALL LETTER RHO} = {min(rhos):.2f}"
+            f"\N{EN DASH}{max(rhos):.2f} at order 2"
+        ),
+    }
+    if not any(e["widenings"] for e in record["windows"].values()):
+        claims["widening under the corrected rule"] = (
+            f"0\N{MULTIPLICATION SIGN} on all {NUMBER_WORDS[tracks]} tracks"
+        )
+    return claims
+
+
+@pytest.mark.parametrize("label", sorted(_declared_once(
+    json.loads(RECORD.read_text(encoding="utf-8"))
+)))
+def test_every_guarded_figure_is_declared_exactly_once(readme, record, label):
+    """Right number, stated once. A restatement fails as loudly as a wrong one."""
+    claim = _declared_once(record)[label]
+    found = " ".join(readme.split()).count(claim)
+    assert found == 1, (
+        f"{label}: the record makes this {claim!r}, and the README states it "
+        f"{found} times. It belongs exactly once, in the section that owns "
+        "it, with every other mention a link to there"
     )
