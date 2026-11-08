@@ -8,13 +8,14 @@ subject to  ddG_folding <= tau    (the protein must stay folded)
 ```
 
 A binder that does not fold is not a different point on the Pareto front. It is
-worthless. But the metric the field reports — hypervolume — pays for it anyway.
+worthless. But hypervolume — the metric reported wherever these problems are
+framed as trade-offs — pays for it anyway.
 
 This repo benchmarks five constraint-handling rules through a single shared
 search engine, on a landscape built from **experimentally measured** folding and
 binding free energies, and reports **feasibility rate**: the fraction of
 returned designs that actually satisfy the constraint — a metric standard in
-constrained optimization and essentially absent from multi-objective protein
+constrained optimization and rarely reported in multi-objective protein
 design. See [relation to prior work](#relation-to-prior-work) for what that
 does and does not claim.
 
@@ -208,6 +209,29 @@ Fixed before any run, from the landscape and τ alone:
 - **Widen by doubling the half-width until the window is reachable**, checked
   before any search runs. Under this rule nothing ever needed it — **0× on all
   four tracks**, which is the point of consulting τ when placing the centre.
+
+#### This placement is not a recipe
+
+The centre needs the exact constrained optimum, which is the quantity the
+rules are being scored against. It is computable here only because Track 2's
+oracle is additive and the attainable set can be enumerated by DP. **On a real
+design problem you do not have it**, so this procedure cannot be followed
+outside a benchmark.
+
+That is legitimate for constructing a test and illegitimate as advice. The
+window is fixed before any rule runs and is identical for every rule, so
+nothing about the comparison is contaminated by it — placement is a property
+of the instance, like τ itself. But it is not a method, and the reason to
+want a window in practice has nothing to do with the landscape: it comes from
+the application, which wants a particular affinity for reasons of its own.
+
+Two honest consequences. The superseded rule needed only the single mutants,
+so whatever else was wrong with it, it *was* implementable without knowing
+the answer — it was a worse test, not a less usable recipe. And the synthetic
+track already runs the implementable version: having no closed-form optimum,
+it places the window from a first-order model fitted to the singles, which is
+what a practitioner would actually have. That path is approximate and is
+flagged as such in the output.
 
 #### This replaces the rule the first run used, and the replacement is a fix
 
@@ -869,10 +893,41 @@ zero when nothing is feasible, with feasibility ratio reported as a matter of
 course, against benchmark suites built around constraints (CF, MW, DAS-CMOP,
 LIR-CMOP). None of that is new here, and this project claims none of it.
 
+**The core argument was made first, in materials science.** Maguire, Hardcastle,
+Hastings, Arróyave & Vela, *Good Enough is Better: Feasibility vs.
+Pareto-Optimality in Alloy Design*
+([arXiv:2510.20125](https://arxiv.org/abs/2510.20125), October 2025) argue that
+alloy design is usually posed as a search for Pareto-optimal trade-offs, that
+Pareto-optimal alloys routinely miss the minimum requirements for deployment,
+and that posing it as constraint satisfaction instead finds viable alloys more
+often and finds the first one sooner. That is this repo's premise, a year
+earlier and in a different material system. Independent work reaching it in
+another domain is better evidence for the premise than anything here.
+
+What differs is what gets measured. They compare two *framings* — constraint
+satisfaction against optimization — and score a campaign on whether it reaches
+a viable alloy and how soon. This compares five constraint-handling *rules*
+inside one framing, through a single shared engine, and scores the composition
+of a fixed delivered set: not whether a feasible design exists, but what
+fraction of what you would hand an experimentalist is usable. Complementary,
+and theirs came first.
+
 **The gap is in protein design specifically.** Multi-objective protein design
 work -- LaMBO, EvoMOBO, MP2D, NSGA-II with ProteinMPNN -- frames these problems
 as trade-offs and reports hypervolume and front coverage. Because no
 feasibility threshold is defined, feasibility rate never appears.
+
+**That convention is not universal, and it is already moving.** RosettaSearch
+([arXiv:2604.17175](https://arxiv.org/abs/2604.17175)) reports success rates
+against structural cutoffs and never reports hypervolume at all — a thresholded
+measure, much closer to what this repo argues for than the lineage above. So
+*the field reports hypervolume* is too broad: it holds for the Pareto-framing
+line of work, not for everything current, and the claim here is scoped to that
+line throughout. What RosettaSearch does use is a fixed weighted sum over its
+objectives, which is
+[the rule this benchmark finds most sensitive to its knob](#3-the-lagrangian-does-not-beat-a-well-chosen-weight--it-beats-having-to-choose)
+— so the scalarization half of the critique applies to it even where the
+hypervolume half does not.
 
 That framing is now *in* the comparison rather than only argued with: NSGA-II
 runs as a fifth rule, through the same engine, treating folding as a second
@@ -889,11 +944,13 @@ reasonable causes for that, not an oversight:
 - the two literatures barely overlap: constrained-MOEA machinery sits in
   evolutionary computation, protein design ML grew out of generative modelling
 
-**So what is contributed here** is a benchmark, not a method or a metric: a
-protein sequence-design problem where the hard constraint is a biophysical
-property with experimentally measured ground truth; one search engine with the
-constraint rule as the only variable; and a measurement of what the current
-protein-design reporting convention hides. The Lagrangian rule itself is
+**So what is contributed here** is a benchmark -- not a method, not a metric,
+and not the argument for feasibility over Pareto-optimality, which the alloy
+work above published first. What is here is: a protein sequence-design problem
+where the hard constraint is a biophysical property with experimentally
+measured ground truth; one search engine with the constraint rule as the only
+variable; and a measurement of what the Pareto-framing reporting convention
+hides. The Lagrangian rule itself is
 adapted from Ctrl-DNA, and the constraint-handling rules are all standard.
 
 ---
@@ -1006,11 +1063,13 @@ how you get it.
   the constraint leaves around the target, but four tracks cannot separate
   that from window width. Settling it needs the target swept across the span
   at fixed width, which is not run here.
-- **Window placement is a rule, not a fact.** The centre is the midpoint of
-  the constrained span and the half-width is twice the median binding error.
-  Both are defensible and both are choices, and the first version of this
-  experiment got the centre wrong in a way that changed the headline result.
-  A different defensible rule could move it again.
+- **Window placement is a rule, not a fact, and not a recipe.** The centre is
+  the midpoint of the constrained span and the half-width is twice the median
+  binding error. Both are defensible and both are choices, and the first
+  version of this experiment got the centre wrong in a way that changed the
+  headline result. A different defensible rule could move it again. The centre
+  also requires the exact constrained optimum, so it is
+  [not reproducible outside a benchmark](#this-placement-is-not-a-recipe).
 - **No method gets close to optimal.** Where the optimum is computable the
   best rules capture 68-85% of it. Nothing here is evidence that any of
   these rules searches well in absolute terms.

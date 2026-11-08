@@ -131,6 +131,17 @@ def constrained_span(landscape, tau: float) -> dict:
     support a windowed test at this tau: combining substitutions buys nothing
     a single does not already give, so there is nowhere to put a target that
     is both combinatorial and legal. That is reported, not worked around.
+
+    **This needs the answer.** The far end of the span is the exact
+    constrained optimum -- the quantity the rules are scored against -- which
+    is available only because an additive oracle makes the attainable set
+    enumerable by DP. Placing a window this way is therefore something a
+    benchmark can do and a real design campaign cannot. It stays fair as a
+    test, because the window is fixed before any rule runs and is the same for
+    every rule, but it is not a procedure to copy. On a landscape with no
+    closed-form optimum the first-order surrogate is used instead, which is
+    what a practitioner would actually have; ``span_is_first_order`` says
+    which happened.
     """
     model, approximate = _exact_model(landscape)
     feasible = [m for m in _single_measurements(landscape) if m.ddg_folding <= tau]
